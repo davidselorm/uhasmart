@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Star, MapPin, Package } from "lucide-react";
 import { SampleBusiness, categories } from "@/lib/data";
 

@@ -6,13 +6,9 @@ import BusinessCard from "@/components/BusinessCard";
 import { categories, sampleBusinesses } from "@/lib/data";
 import {
   ArrowRight,
-  ShieldCheck,
   ShoppingBag,
   Store,
   Sparkles,
-  Users,
-  MapPin,
-  CheckCircle2,
 } from "lucide-react";
 
 export default function HomePage() {

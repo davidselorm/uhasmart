@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { MapPin, Phone, MessageSquare, Store } from "lucide-react";
 import { categories } from "@/lib/data";
 

@@ -8,10 +8,8 @@ import {
   MessageSquare,
   Send,
   Loader2,
-  Package,
   Store,
   User,
-  ArrowLeft,
 } from "lucide-react";
 
 interface InquiryThread {

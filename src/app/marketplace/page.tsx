@@ -8,11 +8,9 @@ import { categories, campusLocations } from "@/lib/data";
 import { createClient } from "@/lib/supabase/client";
 import {
   Search,
-  SlidersHorizontal,
   MapPin,
   Package,
   AlertTriangle,
-  MessageSquare,
   X,
   Loader2,
   CheckCircle2,

@@ -13,10 +13,8 @@ import {
   AlertCircle,
   Trash2,
   Tag,
-  MapPin,
   Loader2,
   X,
-  Upload,
 } from "lucide-react";
 
 interface ListingItem {
