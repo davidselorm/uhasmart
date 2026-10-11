@@ -1,7 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
+import { useState } from "react";
 import { MapPin, Phone, MessageSquare, Store } from "lucide-react";
 import { categories, getCategoryIcon } from "@/lib/data";
+import { getListingImageUrl } from "@/lib/storage";
 
 export interface ProductItem {
   id: string;
@@ -30,10 +33,32 @@ export default function ProductCard({ product, onInquire }: ProductCardProps) {
   const CategoryIcon = getCategoryIcon(product.category);
   const sellerName = product.profiles?.business_name || product.profiles?.display_name || "Student Seller";
   const sellerPhone = product.profiles?.phone_number;
+  const imageUrl = getListingImageUrl(product.image_path);
+  const [imageError, setImageError] = useState(false);
 
   return (
-    <div className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
+    <div className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
       <div>
+        {/* Product Photo or Category Fallback */}
+        <div className="relative mb-3.5 h-48 w-full overflow-hidden rounded-xl bg-slate-100">
+          {imageUrl && !imageError ? (
+            <img
+              src={imageUrl}
+              alt={product.title}
+              onError={() => setImageError(true)}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-gray-400">
+              <CategoryIcon className="h-10 w-10 text-gray-300" />
+              <span className="mt-1 text-[11px] font-semibold text-gray-400">
+                {categoryObj?.name ?? "Campus Item"}
+              </span>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             <CategoryIcon className="h-3.5 w-3.5 text-blue-600" />

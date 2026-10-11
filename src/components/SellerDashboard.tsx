@@ -1,9 +1,11 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { categories, campusLocations } from "@/lib/data";
+import { getListingImageUrl } from "@/lib/storage";
 import RegisterBusinessUpgrade from "@/components/RegisterBusinessUpgrade";
 import {
   Store,
@@ -16,6 +18,7 @@ import {
   Tag,
   Loader2,
   X,
+  UploadCloud,
 } from "lucide-react";
 
 interface ListingItem {
@@ -38,6 +41,7 @@ export default function SellerDashboard() {
   const [listings, setListings] = useState<ListingItem[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -47,6 +51,10 @@ export default function SellerDashboard() {
   const [category, setCategory] = useState("food");
   const [priceGhs, setPriceGhs] = useState("");
   const [location, setLocation] = useState(campusLocations[0].name);
+
+  // Image upload state
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const loadSellerData = useCallback(async () => {
     if (!supabase) {
@@ -85,6 +93,34 @@ export default function SellerDashboard() {
     void loadSellerData();
   }, [loadSellerData]);
 
+  function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please select a valid image file (JPG, PNG, or WEBP).");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image size exceeds 5MB. Please choose a smaller photo.");
+      return;
+    }
+
+    setError("");
+    setImageFile(file);
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+  }
+
+  function handleRemoveImage() {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImageFile(null);
+    setImagePreview(null);
+  }
+
   async function handleCreateListing(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !user) return;
@@ -104,6 +140,7 @@ export default function SellerDashboard() {
         throw new Error("Please enter a valid price in Ghana Cedis (GHS).");
       }
 
+      // Step 1: Create listing record
       const { data: newListing, error: insertError } = await supabase
         .from("listings")
         .insert({
@@ -120,16 +157,49 @@ export default function SellerDashboard() {
 
       if (insertError) throw insertError;
 
-      setListings((prev) => [newListing as ListingItem, ...prev]);
+      let finalImagePath: string | null = null;
+
+      // Step 2: Upload photo if selected
+      if (imageFile) {
+        setUploadingImage(true);
+        const fileExt = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
+        const filePath = `${user.id}/${newListing.id}/${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("listing-images")
+          .upload(filePath, imageFile, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (!uploadError) {
+          finalImagePath = filePath;
+          await supabase
+            .from("listings")
+            .update({ image_path: filePath })
+            .eq("id", newListing.id);
+        } else {
+          console.warn("Storage upload note:", uploadError.message);
+        }
+      }
+
+      const completeListing: ListingItem = {
+        ...newListing,
+        image_path: finalImagePath,
+      };
+
+      setListings((prev) => [completeListing, ...prev]);
       setSuccess("Your listing was submitted successfully and is awaiting quick approval by campus moderators!");
       setShowCreateModal(false);
       setTitle("");
       setDescription("");
       setPriceGhs("");
+      handleRemoveImage();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create listing.");
     } finally {
       setSubmitting(false);
+      setUploadingImage(false);
     }
   }
 
@@ -192,7 +262,7 @@ export default function SellerDashboard() {
     );
   }
 
-  // Case 2: Logged in, but registered as a customer -> Must register student business first!
+  // Case 2: Logged in as customer -> Must register student business first
   if (profile?.role !== "seller") {
     return (
       <div className="flex w-full justify-center">
@@ -314,74 +384,94 @@ export default function SellerDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {listings.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50/50">
-                    <td className="p-4">
-                      <p className="font-bold text-gray-900">{item.title}</p>
-                      <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
-                    </td>
-                    <td className="p-4 capitalize text-gray-600">{item.category}</td>
-                    <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
-                    <td className="p-4 text-gray-600">{item.location}</td>
-                    <td className="p-4">
-                      {item.status === "active" && (
-                        <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
-                          Active
-                        </span>
-                      )}
-                      {item.status === "pending" && (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                          Pending Review
-                        </span>
-                      )}
-                      {item.status === "sold" && (
-                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                          Sold
-                        </span>
-                      )}
-                      {item.status === "withdrawn" && (
-                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                          Withdrawn
-                        </span>
-                      )}
-                      {item.status === "rejected" && (
-                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                          Rejected
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                {listings.map((item) => {
+                  const itemImg = getListingImageUrl(item.image_path);
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50/50">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-slate-100">
+                            {itemImg ? (
+                              <img
+                                src={itemImg}
+                                alt={item.title}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                <Package className="h-5 w-5" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900">{item.title}</p>
+                            <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 capitalize text-gray-600">{item.category}</td>
+                      <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
+                      <td className="p-4 text-gray-600">{item.location}</td>
+                      <td className="p-4">
                         {item.status === "active" && (
-                          <button
-                            type="button"
-                            onClick={() => updateListingStatus(item.id, "sold")}
-                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
-                          >
-                            Mark Sold
-                          </button>
+                          <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                            Active
+                          </span>
+                        )}
+                        {item.status === "pending" && (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                            Pending Review
+                          </span>
                         )}
                         {item.status === "sold" && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                            Sold
+                          </span>
+                        )}
+                        {item.status === "withdrawn" && (
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                            Withdrawn
+                          </span>
+                        )}
+                        {item.status === "rejected" && (
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                            Rejected
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {item.status === "active" && (
+                            <button
+                              type="button"
+                              onClick={() => updateListingStatus(item.id, "sold")}
+                              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Mark Sold
+                            </button>
+                          )}
+                          {item.status === "sold" && (
+                            <button
+                              type="button"
+                              onClick={() => updateListingStatus(item.id, "active")}
+                              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Relist
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => updateListingStatus(item.id, "active")}
-                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                            onClick={() => handleDeleteListing(item.id)}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                            title="Delete Listing"
                           >
-                            Relist
+                            <Trash2 className="h-4 w-4" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteListing(item.id)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                          title="Delete Listing"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -391,7 +481,7 @@ export default function SellerDashboard() {
       {/* Add New Product Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
                 <h3 className="text-base font-bold text-gray-900">List New Product on Campus</h3>
@@ -399,7 +489,10 @@ export default function SellerDashboard() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  handleRemoveImage();
+                }}
                 className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
@@ -419,6 +512,49 @@ export default function SellerDashboard() {
                   placeholder="e.g. White Nike Air Force (Size 42)"
                   className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
+              </div>
+
+              {/* Photo Upload Area */}
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                  Product Photo <span className="font-normal text-gray-400">(Recommended)</span>
+                </label>
+
+                {imagePreview ? (
+                  <div className="relative mt-1 flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-2.5">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                      <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-gray-800">{imageFile?.name}</p>
+                      <p className="text-[11px] text-gray-400">
+                        {imageFile ? (imageFile.size / 1024 / 1024).toFixed(2) : 0} MB &bull; Ready to upload
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                      title="Remove image"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/60 p-5 transition-colors hover:border-blue-400 hover:bg-blue-50/30">
+                    <UploadCloud className="h-6 w-6 text-blue-600" />
+                    <span className="mt-1.5 text-xs font-bold text-gray-700">
+                      Click to upload product photo
+                    </span>
+                    <span className="text-[11px] text-gray-400">PNG, JPG, or WEBP up to 5MB</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -490,7 +626,10 @@ export default function SellerDashboard() {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    handleRemoveImage();
+                  }}
                   className="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
@@ -500,7 +639,11 @@ export default function SellerDashboard() {
                   disabled={submitting}
                   className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {submitting ? "Submitting..." : "Submit Listing"}
+                  {submitting
+                    ? uploadingImage
+                      ? "Uploading photo..."
+                      : "Submitting..."
+                    : "Submit Listing"}
                 </button>
               </div>
             </form>
