@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { categories, campusLocations } from "@/lib/data";
+import RegisterBusinessUpgrade from "@/components/RegisterBusinessUpgrade";
 import {
   Store,
   PlusCircle,
@@ -47,47 +48,51 @@ export default function SellerDashboard() {
   const [priceGhs, setPriceGhs] = useState("");
   const [location, setLocation] = useState(campusLocations[0].name);
 
-  useEffect(() => {
+  const loadSellerData = useCallback(async () => {
     if (!supabase) {
       setLoading(false);
       return;
     }
 
-    async function loadSellerData() {
-      try {
-        if (!supabase) return;
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) {
-          setLoading(false);
-          return;
-        }
-
-        setUser(authData.user);
-
-        const [profRes, listRes] = await Promise.all([
-          supabase.from("profiles").select("display_name,role,business_name").eq("id", authData.user.id).maybeSingle(),
-          supabase.from("listings").select("*").eq("seller_id", authData.user.id).order("created_at", { ascending: false }),
-        ]);
-
-        if (profRes.data) {
-          setProfile(profRes.data as { display_name: string; role: string; business_name: string | null });
-        }
-        if (listRes.data) {
-          setListings(listRes.data as ListingItem[]);
-        }
-      } catch (err) {
-        console.error("Seller dashboard error:", err);
-      } finally {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
         setLoading(false);
+        return;
       }
-    }
 
-    void loadSellerData();
+      setUser(authData.user);
+
+      const [profRes, listRes] = await Promise.all([
+        supabase.from("profiles").select("display_name,role,business_name").eq("id", authData.user.id).maybeSingle(),
+        supabase.from("listings").select("*").eq("seller_id", authData.user.id).order("created_at", { ascending: false }),
+      ]);
+
+      if (profRes.data) {
+        setProfile(profRes.data as { display_name: string; role: string; business_name: string | null });
+      }
+      if (listRes.data) {
+        setListings(listRes.data as ListingItem[]);
+      }
+    } catch (err) {
+      console.error("Seller dashboard error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
+
+  useEffect(() => {
+    void loadSellerData();
+  }, [loadSellerData]);
 
   async function handleCreateListing(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !user) return;
+
+    if (profile?.role !== "seller") {
+      setError("Please register your student business details before listing products.");
+      return;
+    }
 
     setSubmitting(true);
     setError("");
@@ -162,22 +167,47 @@ export default function SellerDashboard() {
     );
   }
 
+  // Case 1: Not logged in
   if (!user) {
     return (
       <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
         <Store className="mx-auto h-12 w-12 text-blue-600" />
         <h2 className="mt-4 text-xl font-bold text-gray-900">Sign in to Seller Dashboard</h2>
         <p className="mt-2 text-xs text-gray-500">You must be logged into a seller account to manage products.</p>
-        <Link
-          href="/login"
-          className="mt-6 inline-block rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-sm"
-        >
-          Sign in
-        </Link>
+        <div className="mt-6 flex flex-col gap-2.5">
+          <Link
+            href="/login"
+            className="w-full rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-sm"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/register-business"
+            className="w-full rounded-xl border border-gray-300 bg-white py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+          >
+            Register Student Business
+          </Link>
+        </div>
       </div>
     );
   }
 
+  // Case 2: Logged in, but registered as a customer -> Must register student business first!
+  if (profile?.role !== "seller") {
+    return (
+      <div className="flex w-full justify-center">
+        <RegisterBusinessUpgrade
+          initialDisplayName={profile?.display_name}
+          onSuccess={() => {
+            setLoading(true);
+            void loadSellerData();
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Case 3: Registered Seller
   const activeCount = listings.filter((l) => l.status === "active").length;
   const pendingCount = listings.filter((l) => l.status === "pending").length;
   const soldCount = listings.filter((l) => l.status === "sold").length;
@@ -250,93 +280,133 @@ export default function SellerDashboard() {
       </div>
 
       {/* Listings Table */}
-      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">Your Inventory ({listings.length})</h2>
-        <p className="text-xs text-gray-500">All products and services listed under your seller profile.</p>
+      <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 p-6">
+          <h2 className="text-lg font-bold text-gray-900">Your Product Catalog</h2>
+          <p className="text-xs text-gray-500">Products are reviewed by campus moderators before going live to students.</p>
+        </div>
 
         {listings.length === 0 ? (
-          <div className="mt-8 rounded-2xl border border-dashed border-gray-200 p-12 text-center">
+          <div className="p-12 text-center">
             <Package className="mx-auto h-12 w-12 text-gray-300" />
-            <h3 className="mt-3 text-sm font-bold text-gray-800">No items listed yet</h3>
-            <p className="mt-1 text-xs text-gray-500">Click &ldquo;Add New Product&rdquo; above to list your first item.</p>
+            <p className="mt-4 text-sm font-semibold text-gray-900">No products listed yet</p>
+            <p className="mt-1 text-xs text-gray-500">Start selling your items by clicking the button below.</p>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-sm"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Add Your First Product
+            </button>
           </div>
         ) : (
-          <div className="mt-6 divide-y divide-gray-100">
-            {listings.map((item) => (
-              <div key={item.id} className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                        item.status === "active"
-                          ? "bg-green-100 text-green-800"
-                          : item.status === "pending"
-                          ? "bg-amber-100 text-amber-800"
-                          : item.status === "sold"
-                          ? "bg-gray-100 text-gray-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {item.status.toUpperCase()}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {categories.find((c) => c.id === item.category)?.name ?? item.category}
-                    </span>
-                  </div>
-                  <h3 className="mt-1.5 truncate text-sm font-bold text-gray-900">{item.title}</h3>
-                  <p className="text-xs font-extrabold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {item.status === "active" && (
-                    <button
-                      type="button"
-                      onClick={() => void updateListingStatus(item.id, "sold")}
-                      className="rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                      Mark Sold
-                    </button>
-                  )}
-                  {item.status === "sold" && (
-                    <button
-                      type="button"
-                      onClick={() => void updateListingStatus(item.id, "active")}
-                      className="rounded-xl border border-green-200 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-50"
-                    >
-                      Reactivate
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteListing(item.id)}
-                    className="rounded-xl border border-red-200 p-1.5 text-red-600 hover:bg-red-50"
-                    title="Delete item"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  <th className="p-4 font-bold">Product</th>
+                  <th className="p-4 font-bold">Category</th>
+                  <th className="p-4 font-bold">Price</th>
+                  <th className="p-4 font-bold">Location</th>
+                  <th className="p-4 font-bold">Status</th>
+                  <th className="p-4 font-bold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {listings.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50/50">
+                    <td className="p-4">
+                      <p className="font-bold text-gray-900">{item.title}</p>
+                      <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
+                    </td>
+                    <td className="p-4 capitalize text-gray-600">{item.category}</td>
+                    <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
+                    <td className="p-4 text-gray-600">{item.location}</td>
+                    <td className="p-4">
+                      {item.status === "active" && (
+                        <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                          Active
+                        </span>
+                      )}
+                      {item.status === "pending" && (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                          Pending Review
+                        </span>
+                      )}
+                      {item.status === "sold" && (
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                          Sold
+                        </span>
+                      )}
+                      {item.status === "withdrawn" && (
+                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                          Withdrawn
+                        </span>
+                      )}
+                      {item.status === "rejected" && (
+                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                          Rejected
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {item.status === "active" && (
+                          <button
+                            type="button"
+                            onClick={() => updateListingStatus(item.id, "sold")}
+                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Mark Sold
+                          </button>
+                        )}
+                        {item.status === "sold" && (
+                          <button
+                            type="button"
+                            onClick={() => updateListingStatus(item.id, "active")}
+                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Relist
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteListing(item.id)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title="Delete Listing"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* Create Listing Modal */}
+      {/* Add New Product Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-xl sm:p-8">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-              <h3 className="text-lg font-extrabold text-gray-900">Add Campus Product / Service</h3>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">List New Product on Campus</h3>
+                <p className="text-xs text-gray-500">Post items to students across Sokode, Trafalgar & Dave campuses.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateListing} className="mt-5 space-y-4">
+            <form onSubmit={handleCreateListing} className="mt-4 space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
                   Product / Service Title <span className="text-red-500">*</span>
@@ -346,7 +416,7 @@ export default function SellerDashboard() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Nike Air Max size 42 (brand new)"
+                  placeholder="e.g. White Nike Air Force (Size 42)"
                   className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
               </div>
@@ -388,7 +458,7 @@ export default function SellerDashboard() {
 
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Campus Location / Hostel <span className="text-red-500">*</span>
+                  Hostel / Campus Pickup Location <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={location}
@@ -412,8 +482,8 @@ export default function SellerDashboard() {
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the condition, specifications, or details..."
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                  placeholder="Describe condition, size, ingredients, or meetup instructions (min 10 characters)..."
+                  className="w-full rounded-xl border border-gray-300 p-3 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
@@ -421,16 +491,16 @@ export default function SellerDashboard() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 rounded-xl border border-gray-300 py-3 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                  className="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 rounded-xl bg-blue-600 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {submitting ? "Submitting..." : "Submit for Review"}
+                  {submitting ? "Submitting..." : "Submit Listing"}
                 </button>
               </div>
             </form>
