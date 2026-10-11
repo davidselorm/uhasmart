@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShoppingBag, Heart } from "lucide-react";
+import { ShoppingBag, ShieldCheck } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -20,8 +20,9 @@ export default function Footer() {
             <Link href="/login" className="hover:text-blue-600">My Account</Link>
           </div>
 
-          <p className="flex items-center gap-1 text-xs text-gray-400">
-            Built for UHAS students with <Heart className="h-3 w-3 fill-red-500 text-red-500" /> in Ho, Ghana
+          <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
+            <ShieldCheck className="h-4 w-4 text-blue-600" />
+            <span>Trusted student commerce platform &bull; Ho, Ghana</span>
           </p>
         </div>
 
