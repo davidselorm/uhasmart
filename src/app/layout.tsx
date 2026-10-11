@@ -29,7 +29,7 @@ export default function RootLayout({
           <div className="ambient-glow-purple absolute -right-20 top-1/3 h-[28rem] w-[28rem] rounded-full blur-3xl" />
         </div>
 
-        <div className="relative flex min-h-screen flex-col pb-20 md:pb-0">
+        <div className="relative flex min-h-screen flex-col pb-28 md:pb-0">
           {children}
         </div>
 

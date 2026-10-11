@@ -1,11 +1,14 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductCard, { ProductItem } from "@/components/ProductCard";
-import { categories, campusLocations } from "@/lib/data";
+import { categories, campusLocations, getCategoryIcon } from "@/lib/data";
 import { createClient } from "@/lib/supabase/client";
+import { getListingImageUrl } from "@/lib/storage";
 import {
   Search,
   MapPin,
@@ -15,26 +18,41 @@ import {
   Loader2,
   CheckCircle2,
   Phone,
+  MessageSquare,
+  Store,
+  ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import { createWhatsAppUrl } from "@/lib/whatsapp";
 
-export default function MarketplacePage() {
+function MarketplaceInner() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
   const [listings, setListings] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "price-low" | "price-high">("newest");
 
-  // Inquiry Modal
+  // Sync category from URL search params (e.g., from Homepage category links)
+  useEffect(() => {
+    const cat = searchParams.get("category");
+    if (cat) {
+      setSelectedCategory(cat);
+    }
+  }, [searchParams]);
+
+  // Product Details & Inquiry Bottom Sheet
   const [inquireProduct, setInquireProduct] = useState<ProductItem | null>(null);
   const [inquiryBody, setInquiryBody] = useState("");
+  const [showInAppForm, setShowInAppForm] = useState(false);
   const [sendingInquiry, setSendingInquiry] = useState(false);
   const [inquiryNotice, setInquiryNotice] = useState("");
   const [inquiryError, setInquiryError] = useState("");
+  const [sheetImgError, setSheetImgError] = useState(false);
 
   useEffect(() => {
     async function loadMarketplace() {
@@ -128,7 +146,7 @@ export default function MarketplacePage() {
       setTimeout(() => {
         setInquireProduct(null);
         setInquiryNotice("");
-      }, 2500);
+      }, 2200);
     } catch (err) {
       setInquiryError(err instanceof Error ? err.message : "Failed to send message.");
     } finally {
@@ -136,30 +154,46 @@ export default function MarketplacePage() {
     }
   }
 
+  // Pre-calculate modal product details
+  const modalSellerName = inquireProduct?.profiles?.business_name || inquireProduct?.profiles?.display_name || "Campus Vendor";
+  const modalSellerPhone = inquireProduct?.profiles?.phone_number;
+  const modalImageUrl = inquireProduct ? getListingImageUrl(inquireProduct.image_path) : null;
+  const ModalCategoryIcon = inquireProduct ? getCategoryIcon(inquireProduct.category) : Package;
+  const modalCategoryObj = inquireProduct ? categories.find((c) => c.id === inquireProduct.category) : null;
+
+  const modalWhatsAppUrl = inquireProduct
+    ? createWhatsAppUrl(
+        modalSellerPhone,
+        `Hello ${modalSellerName}, I saw your listing "${inquireProduct.title}" (GHS ${Number(inquireProduct.price_ghs).toFixed(
+          2
+        )}) on UHASMART. Is it still available?`
+      )
+    : null;
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Navbar />
 
-      <main className="flex-1 py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 py-6 sm:py-10">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
           {/* Header */}
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Ho Marketplace</span>
-            <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">Campus &amp; Town Marketplace</h1>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Ho Marketplace</span>
+            <h1 className="mt-1 text-2xl font-black text-gray-900 sm:text-3xl">Campus &amp; Town Marketplace</h1>
             <p className="mt-1 text-xs text-gray-500">
-              Browse hostels, groceries, salons, gadgets &amp; student services across all of Ho.
+              Hostels, salons, groceries, gadgets, thrift fashion &amp; services across all of Ho.
             </p>
           </div>
 
           {/* Search & Filter Bar (iPhone Frosted Glass) */}
-          <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-3xl glass-card p-3 sm:p-3.5 shadow-sm">
+          <div className="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-3xl glass-card p-2.5 sm:p-3.5 shadow-sm">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search hostels, salons, groceries, shoes, gadgets..."
+                placeholder="Search hostels, barbers, groceries, gadgets..."
                 className="w-full rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
@@ -194,11 +228,11 @@ export default function MarketplacePage() {
           </div>
 
           {/* Category Tabs (Horizontal Swipe on Mobile with Glass Pills) */}
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
             <button
               type="button"
               onClick={() => setSelectedCategory("all")}
-              className={`rounded-2xl px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap active:scale-95 ${
+              className={`rounded-2xl px-4 py-2 text-xs font-bold transition-all whitespace-nowrap active:scale-95 ${
                 selectedCategory === "all"
                   ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
                   : "glass-pill text-gray-700 hover:bg-white"
@@ -213,7 +247,7 @@ export default function MarketplacePage() {
                   key={c.id}
                   type="button"
                   onClick={() => setSelectedCategory(c.id)}
-                  className={`rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 active:scale-95 ${
+                  className={`rounded-2xl px-3.5 py-2 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 active:scale-95 ${
                     selectedCategory === c.id
                       ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
                       : "glass-pill text-gray-700 hover:bg-white"
@@ -226,28 +260,34 @@ export default function MarketplacePage() {
             })}
           </div>
 
-          {/* Product Grid */}
-          <div className="mt-8">
+          {/* Product Grid - 2 COLUMNS ON MOBILE, 3-4 ON DESKTOP */}
+          <div className="mt-6">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-24">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="mt-3 text-xs font-semibold text-gray-500">Loading campus marketplace items...</p>
+                <p className="mt-3 text-xs font-semibold text-gray-500">Loading marketplace items...</p>
               </div>
             ) : filteredProducts.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-12 text-center">
                 <Package className="mx-auto h-12 w-12 text-gray-300" />
                 <h3 className="mt-3 text-base font-bold text-gray-900">No active products found</h3>
                 <p className="mt-1 text-xs text-gray-500">
-                  Try adjusting your search query, or be the first student seller to list an item in this category!
+                  Try adjusting your search query or location filter, or be the first seller to list here!
                 </p>
               </div>
             ) : (
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
                 {filteredProducts.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
-                    onInquire={(item) => setInquireProduct(item)}
+                    onInquire={(item) => {
+                      setInquireProduct(item);
+                      setShowInAppForm(false);
+                      setSheetImgError(false);
+                      setInquiryNotice("");
+                      setInquiryError("");
+                    }}
                   />
                 ))}
               </div>
@@ -256,122 +296,214 @@ export default function MarketplacePage() {
         </div>
       </main>
 
-      {/* Inquiry Modal (iPhone Frosted Glass Bottom Sheet on Mobile) */}
+      {/* Upgraded iOS Product Details Bottom Sheet / Modal */}
       {inquireProduct && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-t-[2rem] sm:rounded-3xl glass-modal p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-base font-extrabold text-gray-900 truncate max-w-[280px]">
-                  Message Seller: {inquireProduct.title}
-                </h3>
-                <p className="text-xs font-bold text-blue-600">GHS {Number(inquireProduct.price_ghs).toFixed(2)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInquireProduct(null)}
-                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 active:scale-95"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setInquireProduct(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-t-[2.5rem] sm:rounded-3xl bg-white shadow-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* iOS Pull Handle */}
+            <div className="pt-3 pb-1 flex justify-center sm:hidden">
+              <div className="h-1.5 w-12 rounded-full bg-gray-300" />
             </div>
 
-            {/* Quick WhatsApp Action */}
-            {inquireProduct && (
-              (() => {
-                const whatsAppModalUrl = createWhatsAppUrl(
-                  inquireProduct.profiles?.phone_number,
-                  `Hello ${
-                    inquireProduct.profiles?.business_name || inquireProduct.profiles?.display_name || "Vendor"
-                  }, I saw your listing "${inquireProduct.title}" (GHS ${Number(inquireProduct.price_ghs).toFixed(
-                    2
-                  )}) on UHASMART. Is it still available?`
-                );
-
-                if (!whatsAppModalUrl) return null;
-
-                return (
-                  <div className="mt-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 p-3.5">
-                    <p className="text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>Instant WhatsApp Contact</span>
-                    </p>
-                    <p className="text-[11px] text-emerald-700 mb-3">
-                      Chat directly with the vendor for fast pickup or delivery in Ho.
-                    </p>
-                    <a
-                      href={whatsAppModalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-extrabold text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-700 active:scale-95 transition-all"
-                    >
-                      <Phone className="h-4 w-4" />
-                      <span>Chat on WhatsApp Directly</span>
-                    </a>
-
-                    <div className="relative my-3 text-center">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-emerald-200/80" />
-                      </div>
-                      <span className="relative bg-emerald-50/80 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                        or send in-app message below
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-
-            <form onSubmit={handleSendInquiry} className="mt-4 space-y-3">
-              {inquiryNotice && (
-                <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3 text-xs font-bold text-green-700">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span>{inquiryNotice}</span>
+            {/* Scrollable Content Container */}
+            <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2 space-y-4">
+              {/* Header with Close Button */}
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <ModalCategoryIcon className="h-4 w-4" />
+                  </span>
+                  <span className="text-xs font-bold text-gray-700">
+                    {modalCategoryObj?.name ?? inquireProduct.category}
+                  </span>
                 </div>
-              )}
-              {inquiryError && (
-                <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>{inquiryError}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-                  Your message to {inquireProduct.profiles?.display_name || "the seller"}
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  value={inquiryBody}
-                  onChange={(e) => setInquiryBody(e.target.value)}
-                  placeholder="Hi, is this still available? Where on campus can we meet?"
-                  className="w-full rounded-xl border border-gray-300 p-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setInquireProduct(null)}
-                  className="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                  className="rounded-full p-2 text-gray-400 hover:bg-gray-100 active:scale-95 transition-all"
+                  aria-label="Close details"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={sendingInquiry}
-                  className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {sendingInquiry ? "Sending..." : "Send Message"}
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-            </form>
+
+              {/* Product Photo Showcase */}
+              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100 shadow-inner">
+                {modalImageUrl && !sheetImgError ? (
+                  <img
+                    src={modalImageUrl}
+                    alt={inquireProduct.title}
+                    onError={() => setSheetImgError(true)}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-gray-400">
+                    <ModalCategoryIcon className="h-12 w-12 text-gray-300" />
+                    <span className="mt-2 text-xs font-semibold text-gray-400">
+                      {modalCategoryObj?.name ?? "Campus Item"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Floating Price Tag on Image */}
+                <div className="absolute bottom-3 left-3">
+                  <div className="glass-pill inline-flex items-baseline gap-1 rounded-2xl px-3 py-1.5 shadow-lg backdrop-blur-md">
+                    <span className="text-xs font-bold text-blue-600">GHS</span>
+                    <span className="text-xl font-black text-gray-900 tracking-tight">
+                      {Number(inquireProduct.price_ghs).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Title & Location */}
+              <div>
+                <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 leading-snug">
+                  {inquireProduct.title}
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-gray-700">
+                    <MapPin className="h-3.5 w-3.5 text-blue-600" />
+                    <span>{inquireProduct.location}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>Student Verified</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Item Description
+                </h4>
+                <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
+                  {inquireProduct.description || "No additional description provided by the seller."}
+                </p>
+              </div>
+
+              {/* Seller Information Card */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white font-bold text-base shadow-sm">
+                    {modalSellerName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <Store className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      <p className="font-bold text-sm text-gray-900 truncate">{modalSellerName}</p>
+                    </div>
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                      {inquireProduct.profiles?.campus_location || inquireProduct.location} &bull; Campus Vendor
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Primary Direct WhatsApp CTA */}
+              {modalWhatsAppUrl ? (
+                <div className="space-y-2">
+                  <a
+                    href={modalWhatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 active:scale-98 transition-all"
+                  >
+                    <Phone className="h-5 w-5" />
+                    <span>Chat Directly on WhatsApp</span>
+                  </a>
+                  <p className="text-center text-[11px] text-gray-400">
+                    Instant contact for fastest delivery or inspection in Ho
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-amber-50 p-3 text-center text-xs text-amber-800">
+                  Seller has not attached a public WhatsApp line. Please use in-app messaging below.
+                </div>
+              )}
+
+              {/* Collapsible / In-App Messaging Toggle */}
+              <div className="border-t border-gray-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInAppForm(!showInAppForm)}
+                  className="w-full flex items-center justify-between py-2 text-xs font-bold text-gray-700 hover:text-blue-600 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4 text-blue-600" />
+                    <span>Send In-App Message on UHASMART</span>
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 text-gray-400 transition-transform ${
+                      showInAppForm ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {showInAppForm && (
+                  <form onSubmit={handleSendInquiry} className="mt-3 space-y-3 animate-in fade-in duration-200">
+                    {inquiryNotice && (
+                      <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3 text-xs font-bold text-green-700">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <span>{inquiryNotice}</span>
+                      </div>
+                    )}
+                    {inquiryError && (
+                      <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>{inquiryError}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <textarea
+                        required
+                        rows={3}
+                        value={inquiryBody}
+                        onChange={(e) => setInquiryBody(e.target.value)}
+                        placeholder={`Hi ${modalSellerName}, is this available? Where in Ho can we meet?`}
+                        className="w-full rounded-xl border border-gray-300 p-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={sendingInquiry}
+                      className="w-full rounded-xl bg-blue-600 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 active:scale-98 transition-all"
+                    >
+                      {sendingInquiry ? "Sending..." : "Send Message"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       <Footer />
     </div>
+  );
+}
+
+export default function MarketplacePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <p className="mt-3 text-xs font-bold text-gray-500">Loading Ho Marketplace...</p>
+        </div>
+      }
+    >
+      <MarketplaceInner />
+    </Suspense>
   );
 }
