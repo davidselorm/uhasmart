@@ -137,36 +137,47 @@ export default function MessagesPage() {
   }, [activeThreadId, loadMessages]);
 
   // REALTIME: Listen to incoming messages for the active thread
+  // REALTIME: Listen to incoming messages for the active thread
   useEffect(() => {
     if (!supabase || !activeThreadId) return;
 
-    setIsLiveConnected(true);
-
-    const channel = supabase
-      .channel(`inquiry_thread_${activeThreadId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "inquiry_messages",
-          filter: `inquiry_id=eq.${activeThreadId}`,
-        },
-        (payload: { new: Record<string, unknown> }) => {
-          const newMsg = payload.new as unknown as MessageItem;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-          markAllRead();
-        }
-      )
-      .subscribe((status: string) => {
-        setIsLiveConnected(status === "SUBSCRIBED");
-      });
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      const channelId = `inquiry_thread_${activeThreadId}_${Math.random().toString(36).substring(2, 8)}`;
+      channel = supabase
+        .channel(channelId)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "inquiry_messages",
+            filter: `inquiry_id=eq.${activeThreadId}`,
+          },
+          (payload: { new: Record<string, unknown> }) => {
+            const newMsg = payload.new as unknown as MessageItem;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+            markAllRead();
+          }
+        )
+        .subscribe((status: string) => {
+          setIsLiveConnected(status === "SUBSCRIBED");
+        });
+    } catch {
+      setIsLiveConnected(false);
+    }
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (channel && supabase) {
+        try {
+          void supabase.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      }
       setIsLiveConnected(false);
     };
   }, [supabase, activeThreadId, markAllRead]);
@@ -175,24 +186,36 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!supabase || !currentUser) return;
 
-    const inqChannel = supabase
-      .channel(`user_inquiries_realtime_${currentUser.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "inquiries",
-        },
-        () => {
-          void loadThreads();
-          markAllRead();
-        }
-      )
-      .subscribe();
+    let inqChannel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      const inqChannelId = `user_inquiries_${currentUser.id}_${Math.random().toString(36).substring(2, 8)}`;
+      inqChannel = supabase
+        .channel(inqChannelId)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "inquiries",
+          },
+          () => {
+            void loadThreads();
+            markAllRead();
+          }
+        )
+        .subscribe();
+    } catch {
+      // ignore
+    }
 
     return () => {
-      void supabase.removeChannel(inqChannel);
+      if (inqChannel && supabase) {
+        try {
+          void supabase.removeChannel(inqChannel);
+        } catch {
+          // ignore
+        }
+      }
     };
   }, [supabase, currentUser, loadThreads, markAllRead]);
 

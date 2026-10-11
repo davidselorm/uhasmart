@@ -40,7 +40,13 @@ export function useUnreadMessages() {
         .limit(30);
 
       if (incomingMsgs && incomingMsgs.length > 0) {
-        const lastViewed = typeof window !== "undefined" ? localStorage.getItem("uhasmart_messages_last_read") : null;
+        let lastViewed: string | null = null;
+        try {
+          lastViewed = typeof window !== "undefined" ? localStorage.getItem("uhasmart_messages_last_read") : null;
+        } catch {
+          lastViewed = null;
+        }
+
         const lastViewedTime = lastViewed ? new Date(lastViewed).getTime() : 0;
         const freshUnread = (incomingMsgs as { created_at: string }[]).filter(
           (m) => new Date(m.created_at).getTime() > lastViewedTime
@@ -50,7 +56,7 @@ export function useUnreadMessages() {
         setUnreadCount(0);
       }
     } catch {
-      // Graceful fallback
+      // Graceful fallback: never crash UI
     }
   }, [supabase]);
 
@@ -59,35 +65,51 @@ export function useUnreadMessages() {
 
     if (!supabase) return;
 
-    // Realtime listener for incoming messages
-    const channel = supabase
-      .channel("global_message_notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "inquiry_messages",
-        },
-        () => {
-          void checkMessages();
-        }
-      )
-      .subscribe();
-
     // Listen to local storage events if multiple tabs are open
     const handleStorage = () => void checkMessages();
     window.addEventListener("storage", handleStorage);
 
+    // Each hook instance uses a unique channel name to prevent "cannot add callbacks after subscribe()" error
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      const channelId = `unread_badge_${Math.random().toString(36).substring(2, 9)}`;
+      channel = supabase
+        .channel(channelId)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "inquiry_messages",
+          },
+          () => {
+            void checkMessages();
+          }
+        )
+        .subscribe();
+    } catch {
+      // Gracefully ignore subscription errors
+    }
+
     return () => {
       window.removeEventListener("storage", handleStorage);
-      void supabase.removeChannel(channel);
+      if (channel && supabase) {
+        try {
+          void supabase.removeChannel(channel);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
     };
   }, [supabase, checkMessages]);
 
   const markAllRead = useCallback(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("uhasmart_messages_last_read", new Date().toISOString());
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("uhasmart_messages_last_read", new Date().toISOString());
+        setUnreadCount(0);
+      }
+    } catch {
       setUnreadCount(0);
     }
   }, []);
