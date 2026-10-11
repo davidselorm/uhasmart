@@ -1,0 +1,59 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Home, Search, Plus, MessageSquare, User } from "lucide-react";
+
+export default function MobileDock() {
+  const pathname = usePathname();
+
+  const links = [
+    { href: "/", label: "Home", icon: Home },
+    { href: "/marketplace", label: "Market", icon: Search },
+    { href: "/seller", label: "Sell", icon: Plus, isAction: true },
+    { href: "/messages", label: "Chats", icon: MessageSquare },
+    { href: "/login", label: "Account", icon: User },
+  ];
+
+  return (
+    <nav
+      aria-label="Mobile Dock"
+      className="fixed bottom-4 left-3 right-3 z-40 mx-auto max-w-sm glass-ios rounded-full px-3 py-2 shadow-xl md:hidden"
+    >
+      <div className="flex items-center justify-around">
+        {links.map((link) => {
+          const Icon = link.icon;
+          const isActive = pathname === link.href;
+
+          if (link.isAction) {
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="group relative -mt-5 flex flex-col items-center"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 transition-transform active:scale-95">
+                  <Plus className="h-6 w-6 stroke-[2.5]" />
+                </div>
+                <span className="mt-1 text-[10px] font-bold text-gray-700">Sell</span>
+              </Link>
+            );
+          }
+
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`flex flex-col items-center py-1 transition-all active:scale-95 ${
+                isActive ? "text-blue-600 font-bold" : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+              <span className="mt-0.5 text-[10px]">{link.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

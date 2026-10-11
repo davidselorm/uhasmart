@@ -149,26 +149,26 @@ export default function MarketplacePage() {
             </p>
           </div>
 
-          {/* Search & Filter Bar */}
-          <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-            <div className="relative flex-1 min-w-[200px]">
+          {/* Search & Filter Bar (iPhone Frosted Glass) */}
+          <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-3xl glass-card p-3 sm:p-3.5 shadow-sm">
+            <div className="relative flex-1">
               <Search className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search products, shoes, food, books..."
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none"
+                className="w-full rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <MapPin className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+              <div className="relative flex-1 sm:flex-initial">
+                <MapPin className="absolute left-3 top-3 h-3.5 w-3.5 text-gray-400" />
                 <select
                   value={selectedLocation}
                   onChange={(e) => setSelectedLocation(e.target.value)}
-                  className="rounded-xl border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                  className="w-full sm:w-auto rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-8 pr-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                 >
                   <option value="all">All Campuses</option>
                   {campusLocations.map((loc) => (
@@ -182,7 +182,7 @@ export default function MarketplacePage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                className="flex-1 sm:flex-initial rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2.5 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
               >
                 <option value="newest">Newest first</option>
                 <option value="price-low">Price: Low to High</option>
@@ -191,15 +191,15 @@ export default function MarketplacePage() {
             </div>
           </div>
 
-          {/* Category Tabs */}
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {/* Category Tabs (Horizontal Swipe on Mobile with Glass Pills) */}
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
             <button
               type="button"
               onClick={() => setSelectedCategory("all")}
-              className={`rounded-xl px-4 py-2 text-xs font-bold transition-all whitespace-nowrap ${
+              className={`rounded-2xl px-4 py-2.5 text-xs font-bold transition-all whitespace-nowrap active:scale-95 ${
                 selectedCategory === "all"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                  : "glass-pill text-gray-700 hover:bg-white"
               }`}
             >
               All Categories
@@ -211,10 +211,10 @@ export default function MarketplacePage() {
                   key={c.id}
                   type="button"
                   onClick={() => setSelectedCategory(c.id)}
-                  className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  className={`rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 active:scale-95 ${
                     selectedCategory === c.id
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                      : "glass-pill text-gray-700 hover:bg-white"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -254,10 +254,10 @@ export default function MarketplacePage() {
         </div>
       </main>
 
-      {/* Inquiry Modal */}
+      {/* Inquiry Modal (iPhone Frosted Glass Bottom Sheet on Mobile) */}
       {inquireProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-t-[2rem] sm:rounded-3xl glass-modal p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-gray-900 truncate max-w-[280px]">
@@ -268,7 +268,7 @@ export default function MarketplacePage() {
               <button
                 type="button"
                 onClick={() => setInquireProduct(null)}
-                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
+                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 active:scale-95"
               >
                 <X className="h-5 w-5" />
               </button>

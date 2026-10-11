@@ -19,6 +19,7 @@ import {
   Loader2,
   X,
   UploadCloud,
+  MapPin,
 } from "lucide-react";
 
 interface ListingItem {
@@ -52,7 +53,7 @@ export default function SellerDashboard() {
   const [priceGhs, setPriceGhs] = useState("");
   const [location, setLocation] = useState(campusLocations[0].name);
 
-  // Image upload state
+  // Image upload state (Compulsory)
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -130,6 +131,12 @@ export default function SellerDashboard() {
       return;
     }
 
+    // Compulsory image check
+    if (!imageFile) {
+      setError("A product photo is required. Please upload a clear photo of your item before submitting.");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -157,39 +164,35 @@ export default function SellerDashboard() {
 
       if (insertError) throw insertError;
 
-      let finalImagePath: string | null = null;
+      // Step 2: Upload compulsory image
+      setUploadingImage(true);
+      const fileExt = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
+      const filePath = `${user.id}/${newListing.id}/${Date.now()}.${fileExt}`;
 
-      // Step 2: Upload photo if selected
-      if (imageFile) {
-        setUploadingImage(true);
-        const fileExt = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
-        const filePath = `${user.id}/${newListing.id}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("listing-images")
+        .upload(filePath, imageFile, {
+          cacheControl: "3600",
+          upsert: true,
+        });
 
-        const { error: uploadError } = await supabase.storage
-          .from("listing-images")
-          .upload(filePath, imageFile, {
-            cacheControl: "3600",
-            upsert: true,
-          });
-
-        if (!uploadError) {
-          finalImagePath = filePath;
-          await supabase
-            .from("listings")
-            .update({ image_path: filePath })
-            .eq("id", newListing.id);
-        } else {
-          console.warn("Storage upload note:", uploadError.message);
-        }
+      if (uploadError) {
+        throw new Error(`Failed to upload product image: ${uploadError.message}`);
       }
+
+      // Update listing with image_path
+      await supabase
+        .from("listings")
+        .update({ image_path: filePath })
+        .eq("id", newListing.id);
 
       const completeListing: ListingItem = {
         ...newListing,
-        image_path: finalImagePath,
+        image_path: filePath,
       };
 
       setListings((prev) => [completeListing, ...prev]);
-      setSuccess("Your listing was submitted successfully and is awaiting quick approval by campus moderators!");
+      setSuccess("Your listing was submitted successfully with photo and is awaiting quick approval by campus moderators!");
       setShowCreateModal(false);
       setTitle("");
       setDescription("");
@@ -232,7 +235,7 @@ export default function SellerDashboard() {
     return (
       <div className="flex w-full flex-col items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-        <p className="mt-4 text-sm font-medium text-gray-500">Loading Seller Dashboard...</p>
+        <p className="mt-4 text-xs font-semibold text-gray-500">Loading Seller Portal...</p>
       </div>
     );
   }
@@ -240,20 +243,20 @@ export default function SellerDashboard() {
   // Case 1: Not logged in
   if (!user) {
     return (
-      <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+      <div className="w-full max-w-md rounded-3xl glass-card p-8 text-center shadow-lg">
         <Store className="mx-auto h-12 w-12 text-blue-600" />
         <h2 className="mt-4 text-xl font-bold text-gray-900">Sign in to Seller Dashboard</h2>
         <p className="mt-2 text-xs text-gray-500">You must be logged into a seller account to manage products.</p>
         <div className="mt-6 flex flex-col gap-2.5">
           <Link
             href="/login"
-            className="w-full rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-sm"
+            className="w-full rounded-2xl bg-blue-600 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
           >
             Sign in
           </Link>
           <Link
             href="/register-business"
-            className="w-full rounded-xl border border-gray-300 bg-white py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+            className="w-full rounded-2xl border border-gray-200 bg-white py-3 text-xs font-bold text-gray-700 hover:bg-gray-50"
           >
             Register Student Business
           </Link>
@@ -265,7 +268,7 @@ export default function SellerDashboard() {
   // Case 2: Logged in as customer -> Must register student business first
   if (profile?.role !== "seller") {
     return (
-      <div className="flex w-full justify-center">
+      <div className="flex w-full justify-center px-2">
         <RegisterBusinessUpgrade
           initialDisplayName={profile?.display_name}
           onSuccess={() => {
@@ -283,48 +286,48 @@ export default function SellerDashboard() {
   const soldCount = listings.filter((l) => l.status === "sold").length;
 
   return (
-    <div className="w-full max-w-5xl space-y-6">
-      {/* Top Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="w-full max-w-5xl space-y-6 px-1 sm:px-0">
+      {/* Top Banner (Frosted Glass) */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-3xl glass-card p-6 shadow-sm">
         <div>
-          <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-800">
+          <span className="rounded-full bg-purple-100 px-3 py-1 text-[11px] font-bold text-purple-800">
             Student Seller Portal
           </span>
           <h1 className="mt-2 text-2xl font-extrabold text-gray-900 sm:text-3xl">
             {profile?.business_name || profile?.display_name || "Campus Business Hub"}
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Manage your items, check review status, and reach fellow UHAS students.
+            Manage your items, check review status, and reach students across UHAS Ho.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 transition-all active:scale-95"
         >
           <PlusCircle className="h-4 w-4" />
-          Add New Product
+          <span>Add New Product</span>
         </button>
       </div>
 
       {/* Alerts */}
       {error && (
-        <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-4 text-sm text-red-700">
-          <AlertCircle className="h-5 w-5 shrink-0" />
+        <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-4 text-xs font-bold text-red-700 border border-red-200">
+          <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-2xl bg-green-50 p-4 text-sm text-green-700">
-          <CheckCircle2 className="h-5 w-5 shrink-0" />
+        <div className="flex items-center gap-2 rounded-2xl bg-green-50 p-4 text-xs font-bold text-green-700 border border-green-200">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>{success}</span>
         </div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+      {/* Stats Cards (Mobile responsive grid) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+        <div className="rounded-3xl glass-card p-5 shadow-sm">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
             <Package className="h-5 w-5" />
           </div>
@@ -332,7 +335,7 @@ export default function SellerDashboard() {
           <p className="text-xs font-semibold text-gray-500">Live Active Items</p>
         </div>
 
-        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-3xl glass-card p-5 shadow-sm">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
             <Clock className="h-5 w-5" />
           </div>
@@ -340,7 +343,7 @@ export default function SellerDashboard() {
           <p className="text-xs font-semibold text-gray-500">Pending Review</p>
         </div>
 
-        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-3xl glass-card p-5 shadow-sm">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
             <Tag className="h-5 w-5" />
           </div>
@@ -349,9 +352,9 @@ export default function SellerDashboard() {
         </div>
       </div>
 
-      {/* Listings Table */}
-      <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 p-6">
+      {/* Product Catalog Section */}
+      <div className="overflow-hidden rounded-3xl glass-card shadow-sm">
+        <div className="border-b border-gray-100 p-5 sm:p-6">
           <h2 className="text-lg font-bold text-gray-900">Your Product Catalog</h2>
           <p className="text-xs text-gray-500">Products are reviewed by campus moderators before going live to students.</p>
         </div>
@@ -360,132 +363,227 @@ export default function SellerDashboard() {
           <div className="p-12 text-center">
             <Package className="mx-auto h-12 w-12 text-gray-300" />
             <p className="mt-4 text-sm font-semibold text-gray-900">No products listed yet</p>
-            <p className="mt-1 text-xs text-gray-500">Start selling your items by clicking the button below.</p>
+            <p className="mt-1 text-xs text-gray-500">Start selling your items by uploading your first product photo.</p>
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-sm"
+              className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-bold text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-95"
             >
               <PlusCircle className="h-4 w-4" />
-              Add Your First Product
+              <span>Add Your First Product</span>
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="p-4 font-bold">Product</th>
-                  <th className="p-4 font-bold">Category</th>
-                  <th className="p-4 font-bold">Price</th>
-                  <th className="p-4 font-bold">Location</th>
-                  <th className="p-4 font-bold">Status</th>
-                  <th className="p-4 font-bold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {listings.map((item) => {
-                  const itemImg = getListingImageUrl(item.image_path);
-                  return (
-                    <tr key={item.id} className="hover:bg-gray-50/50">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-slate-100">
-                            {itemImg ? (
-                              <img
-                                src={itemImg}
-                                alt={item.title}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-gray-400">
-                                <Package className="h-5 w-5" />
-                              </div>
-                            )}
+          <>
+            {/* MOBILE VIEW: Touch-friendly Card List (Hidden on desktop) */}
+            <div className="divide-y divide-gray-100 block md:hidden">
+              {listings.map((item) => {
+                const itemImg = getListingImageUrl(item.image_path);
+                return (
+                  <div key={item.id} className="p-4 space-y-3">
+                    <div className="flex gap-3">
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-slate-100 shadow-sm">
+                        {itemImg ? (
+                          <img
+                            src={itemImg}
+                            alt={item.title}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-gray-400">
+                            <Package className="h-6 w-6" />
                           </div>
-                          <div>
-                            <p className="font-bold text-gray-900">{item.title}</p>
-                            <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 capitalize text-gray-600">{item.category}</td>
-                      <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
-                      <td className="p-4 text-gray-600">{item.location}</td>
-                      <td className="p-4">
-                        {item.status === "active" && (
-                          <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
-                            Active
-                          </span>
                         )}
-                        {item.status === "pending" && (
-                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                            Pending Review
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                            {item.category}
                           </span>
-                        )}
-                        {item.status === "sold" && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                            Sold
-                          </span>
-                        )}
-                        {item.status === "withdrawn" && (
-                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                            Withdrawn
-                          </span>
-                        )}
-                        {item.status === "rejected" && (
-                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                            Rejected
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
                           {item.status === "active" && (
-                            <button
-                              type="button"
-                              onClick={() => updateListingStatus(item.id, "sold")}
-                              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
-                            >
-                              Mark Sold
-                            </button>
+                            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">
+                              Active
+                            </span>
+                          )}
+                          {item.status === "pending" && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Pending
+                            </span>
                           )}
                           {item.status === "sold" && (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
+                              Sold
+                            </span>
+                          )}
+                          {item.status === "rejected" && (
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                              Rejected
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="mt-1 text-sm font-bold text-gray-900 truncate">{item.title}</h3>
+                        <p className="text-xs font-extrabold text-blue-600">
+                          GHS {Number(item.price_ghs).toFixed(2)}
+                        </p>
+                        <p className="flex items-center gap-1 text-[11px] text-gray-400 mt-1 truncate">
+                          <MapPin className="h-3 w-3" />
+                          <span>{item.location}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
+                      {item.status === "active" && (
+                        <button
+                          type="button"
+                          onClick={() => updateListingStatus(item.id, "sold")}
+                          className="flex-1 rounded-xl border border-gray-200 bg-white py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 text-center"
+                        >
+                          Mark Sold
+                        </button>
+                      )}
+                      {item.status === "sold" && (
+                        <button
+                          type="button"
+                          onClick={() => updateListingStatus(item.id, "active")}
+                          className="flex-1 rounded-xl border border-gray-200 bg-white py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 text-center"
+                        >
+                          Relist Item
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteListing(item.id)}
+                        className="rounded-xl border border-red-200 bg-red-50/50 p-2 text-red-600 hover:bg-red-100"
+                        title="Delete Listing"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* DESKTOP VIEW: Data Table (Hidden on mobile) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50/70 text-gray-600">
+                  <tr>
+                    <th className="p-4 font-bold">Product</th>
+                    <th className="p-4 font-bold">Category</th>
+                    <th className="p-4 font-bold">Price</th>
+                    <th className="p-4 font-bold">Location</th>
+                    <th className="p-4 font-bold">Status</th>
+                    <th className="p-4 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {listings.map((item) => {
+                    const itemImg = getListingImageUrl(item.image_path);
+                    return (
+                      <tr key={item.id} className="hover:bg-gray-50/50">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-slate-100 shadow-sm">
+                              {itemImg ? (
+                                <img
+                                  src={itemImg}
+                                  alt={item.title}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                  <Package className="h-5 w-5" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900">{item.title}</p>
+                              <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 capitalize text-gray-600">{item.category}</td>
+                        <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
+                        <td className="p-4 text-gray-600">{item.location}</td>
+                        <td className="p-4">
+                          {item.status === "active" && (
+                            <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                              Active
+                            </span>
+                          )}
+                          {item.status === "pending" && (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                              Pending Review
+                            </span>
+                          )}
+                          {item.status === "sold" && (
+                            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                              Sold
+                            </span>
+                          )}
+                          {item.status === "withdrawn" && (
+                            <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                              Withdrawn
+                            </span>
+                          )}
+                          {item.status === "rejected" && (
+                            <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
+                              Rejected
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {item.status === "active" && (
+                              <button
+                                type="button"
+                                onClick={() => updateListingStatus(item.id, "sold")}
+                                className="rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                              >
+                                Mark Sold
+                              </button>
+                            )}
+                            {item.status === "sold" && (
+                              <button
+                                type="button"
+                                onClick={() => updateListingStatus(item.id, "active")}
+                                className="rounded-xl border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                              >
+                                Relist
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => updateListingStatus(item.id, "active")}
-                              className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                              onClick={() => handleDeleteListing(item.id)}
+                              className="rounded-xl p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                              title="Delete Listing"
                             >
-                              Relist
+                              <Trash2 className="h-4 w-4" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteListing(item.id)}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            title="Delete Listing"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Add New Product Modal */}
+      {/* Add New Product Modal (iPhone Frosted Glass Modal) */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-t-[2rem] sm:rounded-3xl glass-modal p-6 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
-                <h3 className="text-base font-bold text-gray-900">List New Product on Campus</h3>
-                <p className="text-xs text-gray-500">Post items to students across Sokode, Trafalgar & Dave campuses.</p>
+                <h3 className="text-base font-extrabold text-gray-900">List New Product on Campus</h3>
+                <p className="text-xs text-gray-500">Post items to students across Sokode, Trafalgar &amp; Dave campuses.</p>
               </div>
               <button
                 type="button"
@@ -493,13 +591,13 @@ export default function SellerDashboard() {
                   setShowCreateModal(false);
                   handleRemoveImage();
                 }}
-                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
+                className="rounded-full p-2 text-gray-400 hover:bg-gray-100 active:scale-95"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateListing} className="mt-4 space-y-4">
+            <form onSubmit={handleCreateListing} className="mt-5 space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
                   Product / Service Title <span className="text-red-500">*</span>
@@ -510,43 +608,59 @@ export default function SellerDashboard() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. White Nike Air Force (Size 42)"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                  className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
-              {/* Photo Upload Area */}
+              {/* Photo Upload Area (COMPULSORY) */}
               <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Product Photo <span className="font-normal text-gray-400">(Recommended)</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Product Photo <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                    Required
+                  </span>
+                </div>
 
                 {imagePreview ? (
-                  <div className="relative mt-1 flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-2.5">
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="relative mt-1 flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-3">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                       <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-bold text-gray-800">{imageFile?.name}</p>
-                      <p className="text-[11px] text-gray-400">
-                        {imageFile ? (imageFile.size / 1024 / 1024).toFixed(2) : 0} MB &bull; Ready to upload
+                      <p className="text-[11px] text-gray-500">
+                        {imageFile ? (imageFile.size / 1024 / 1024).toFixed(2) : 0} MB &bull; Photo ready
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={handleRemoveImage}
-                      className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                      className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
                       title="Remove image"
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
                 ) : (
-                  <label className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/60 p-5 transition-colors hover:border-blue-400 hover:bg-blue-50/30">
-                    <UploadCloud className="h-6 w-6 text-blue-600" />
-                    <span className="mt-1.5 text-xs font-bold text-gray-700">
-                      Click to upload product photo
+                  <label
+                    className={`mt-1 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 transition-all ${
+                      error && !imageFile
+                        ? "border-red-400 bg-red-50/40"
+                        : "border-gray-200 bg-white/70 hover:border-blue-400 hover:bg-blue-50/40"
+                    }`}
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 shadow-sm">
+                      <UploadCloud className="h-6 w-6" />
+                    </div>
+                    <span className="mt-2 text-xs font-bold text-gray-900">
+                      Tap to upload product photo
                     </span>
-                    <span className="text-[11px] text-gray-400">PNG, JPG, or WEBP up to 5MB</span>
+                    <span className="text-[11px] text-gray-500 mt-0.5">JPG, PNG, or WEBP up to 5MB</span>
+                    <span className="mt-2 text-[10px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
+                      Every listing must have a photo
+                    </span>
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -565,7 +679,7 @@ export default function SellerDashboard() {
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                    className="w-full rounded-2xl border border-gray-200 bg-white/80 px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -587,7 +701,7 @@ export default function SellerDashboard() {
                     value={priceGhs}
                     onChange={(e) => setPriceGhs(e.target.value)}
                     placeholder="e.g. 150"
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                    className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -599,7 +713,7 @@ export default function SellerDashboard() {
                 <select
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                  className="w-full rounded-2xl border border-gray-200 bg-white/80 px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                 >
                   {campusLocations.map((loc) => (
                     <option key={loc.id} value={loc.name}>
@@ -619,7 +733,7 @@ export default function SellerDashboard() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe condition, size, ingredients, or meetup instructions (min 10 characters)..."
-                  className="w-full rounded-xl border border-gray-300 p-3 text-sm text-gray-900 focus:border-blue-600 focus:outline-none"
+                  className="w-full rounded-2xl border border-gray-200 bg-white/80 p-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
@@ -630,14 +744,14 @@ export default function SellerDashboard() {
                     setShowCreateModal(false);
                     handleRemoveImage();
                   }}
-                  className="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                  className="flex-1 rounded-2xl border border-gray-200 bg-white py-3 text-xs font-bold text-gray-700 hover:bg-gray-50 active:scale-95"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 rounded-2xl bg-blue-600 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95"
                 >
                   {submitting
                     ? uploadingImage

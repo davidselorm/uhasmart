@@ -10,6 +10,7 @@ import {
   Loader2,
   Store,
   User,
+  ChevronLeft,
 } from "lucide-react";
 
 interface InquiryThread {
@@ -37,6 +38,7 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [threads, setThreads] = useState<InquiryThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [newMessage, setNewMessage] = useState("");
@@ -139,11 +141,11 @@ export default function MessagesPage() {
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Navbar />
 
-      <main className="flex-1 py-8">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-6">
+      <main className="flex-1 py-6 sm:py-10">
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 lg:px-8">
+          <div className="mb-4 sm:mb-6">
             <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Inquiry Messages</span>
-            <h1 className="mt-1 text-2xl font-extrabold text-gray-900">Buyer &amp; Seller Chats</h1>
+            <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">Buyer &amp; Seller Chats</h1>
           </div>
 
           {loading ? (
@@ -152,7 +154,7 @@ export default function MessagesPage() {
               <p className="mt-3 text-xs font-medium text-gray-500">Loading your conversations...</p>
             </div>
           ) : !currentUser ? (
-            <div className="rounded-3xl border border-gray-200 bg-white p-10 text-center shadow-sm max-w-md mx-auto">
+            <div className="rounded-3xl glass-card p-10 text-center shadow-lg max-w-md mx-auto">
               <MessageSquare className="mx-auto h-12 w-12 text-blue-600" />
               <h2 className="mt-3 text-lg font-bold text-gray-900">Sign in to view messages</h2>
               <p className="mt-1 text-xs text-gray-500">
@@ -160,7 +162,7 @@ export default function MessagesPage() {
               </p>
             </div>
           ) : threads.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-12 text-center">
+            <div className="rounded-3xl border border-dashed border-gray-200 glass-card p-12 text-center">
               <MessageSquare className="mx-auto h-12 w-12 text-gray-300" />
               <h3 className="mt-3 text-base font-bold text-gray-900">No active messages</h3>
               <p className="mt-1 text-xs text-gray-500">
@@ -168,11 +170,15 @@ export default function MessagesPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm grid grid-cols-1 md:grid-cols-3 min-h-[550px]">
-              {/* Thread List */}
-              <div className="border-r border-gray-100 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Conversations</p>
-                <div className="space-y-2">
+            <div className="overflow-hidden rounded-3xl glass-card shadow-sm border border-gray-200/80 grid grid-cols-1 md:grid-cols-3 min-h-[550px]">
+              {/* Thread List (Mobile toggled or Desktop left column) */}
+              <div
+                className={`border-r border-gray-100 p-3 sm:p-4 ${
+                  mobileThreadOpen ? "hidden md:block" : "block"
+                }`}
+              >
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 px-1">Conversations</p>
+                <div className="space-y-1.5 sm:space-y-2">
                   {threads.map((thread) => {
                     const isActive = thread.id === activeThreadId;
                     const isBuyer = thread.buyer_id === currentUser.id;
@@ -181,14 +187,17 @@ export default function MessagesPage() {
                       <button
                         key={thread.id}
                         type="button"
-                        onClick={() => setActiveThreadId(thread.id)}
-                        className={`w-full text-left rounded-2xl p-3.5 transition-all flex items-start gap-3 ${
+                        onClick={() => {
+                          setActiveThreadId(thread.id);
+                          setMobileThreadOpen(true);
+                        }}
+                        className={`w-full text-left rounded-2xl p-3.5 transition-all flex items-start gap-3 active:scale-95 ${
                           isActive
-                            ? "bg-blue-50/80 border border-blue-200 shadow-sm"
-                            : "hover:bg-gray-50 border border-transparent"
+                            ? "bg-blue-50/90 border border-blue-200 shadow-sm"
+                            : "hover:bg-white/80 border border-transparent"
                         }`}
                       >
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm font-bold text-xs">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm font-bold text-xs">
                           {isBuyer ? <Store className="h-4 w-4" /> : <User className="h-4 w-4" />}
                         </span>
                         <div className="min-w-0 flex-1">
@@ -198,7 +207,7 @@ export default function MessagesPage() {
                           <p className="text-[11px] font-semibold text-blue-600">
                             GHS {Number(thread.listings?.price_ghs ?? 0).toFixed(2)}
                           </p>
-                          <p className="text-[10px] text-gray-400 mt-1">
+                          <p className="text-[10px] text-gray-400 mt-0.5">
                             {new Date(thread.created_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -208,44 +217,60 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              {/* Chat Thread */}
-              <div className="col-span-2 flex flex-col justify-between p-6">
+              {/* Chat Thread (Mobile toggled or Desktop 2-column) */}
+              <div
+                className={`col-span-2 flex flex-col justify-between p-4 sm:p-6 ${
+                  !mobileThreadOpen ? "hidden md:flex" : "flex"
+                }`}
+              >
                 {activeThread ? (
                   <>
-                    <div className="border-b border-gray-100 pb-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h2 className="text-sm font-extrabold text-gray-900">
+                    <div className="border-b border-gray-100 pb-3 sm:pb-4">
+                      {/* Mobile Back Button */}
+                      <button
+                        type="button"
+                        onClick={() => setMobileThreadOpen(false)}
+                        className="mb-2 inline-flex items-center gap-1 text-xs font-bold text-blue-600 md:hidden active:scale-95"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Back to Conversations</span>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
                             {activeThread.listings?.title ?? "Listing"}
                           </h2>
                           <p className="text-xs font-bold text-blue-600">
                             GHS {Number(activeThread.listings?.price_ghs ?? 0).toFixed(2)}
                           </p>
                         </div>
-                        <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
-                          {activeThread.buyer_id === currentUser.id ? "Your Inquiry to Seller" : "Buyer Inquiry on Your Item"}
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-blue-700 shrink-0">
+                          {activeThread.buyer_id === currentUser.id ? "Your Inquiry" : "Buyer Chat"}
                         </span>
                       </div>
                     </div>
 
                     {/* Messages Body */}
-                    <div className="flex-1 overflow-y-auto py-6 space-y-3">
+                    <div className="flex-1 overflow-y-auto py-4 sm:py-6 space-y-3 min-h-[300px] max-h-[50vh] sm:max-h-[60vh]">
                       {loadingMessages ? (
                         <div className="flex justify-center py-10">
                           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                         </div>
                       ) : messages.length === 0 ? (
-                        <p className="text-center text-xs text-gray-400">No messages sent yet in this conversation.</p>
+                        <p className="text-center text-xs text-gray-400 py-10">
+                          No messages yet. Send a greeting or ask where to meet on campus!
+                        </p>
                       ) : (
                         messages.map((msg) => {
                           const isMine = msg.sender_id === currentUser.id;
                           return (
                             <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                               <div
-                                className={`max-w-xs sm:max-w-md rounded-2xl px-4 py-2.5 text-xs ${
+                                className={`max-w-[85%] sm:max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
                                   isMine
                                     ? "bg-blue-600 text-white rounded-br-none"
-                                    : "bg-gray-100 text-gray-900 rounded-bl-none"
+                                    : "bg-white border border-gray-200/80 text-gray-900 rounded-bl-none"
                                 }`}
                               >
                                 <p className="leading-relaxed whitespace-pre-wrap">{msg.body}</p>
@@ -260,28 +285,28 @@ export default function MessagesPage() {
                     </div>
 
                     {/* Send Input */}
-                    <form onSubmit={handleSendMessage} className="flex items-center gap-2 border-t border-gray-100 pt-4">
+                    <form onSubmit={handleSendMessage} className="flex items-center gap-2 border-t border-gray-100 pt-3 sm:pt-4">
                       <input
                         type="text"
                         required
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Type a message or arrange a campus meetup..."
-                        className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+                        className="flex-1 rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
                       />
                       <button
                         type="submit"
                         disabled={sending}
-                        className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95 shrink-0"
                       >
                         {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       </button>
                     </form>
                   </>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
+                  <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 py-16">
                     <MessageSquare className="h-10 w-10 mb-2 opacity-50" />
-                    <p className="text-xs">Select a conversation on the left to start messaging.</p>
+                    <p className="text-xs">Select a conversation to start messaging.</p>
                   </div>
                 )}
               </div>
