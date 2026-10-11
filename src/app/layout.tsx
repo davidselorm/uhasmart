@@ -23,9 +23,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="relative min-h-screen bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-700">
-        {/* Subtle Ambient Apple iOS Glows */}
-        <div className="ambient-glow ambient-glow-blue -top-32 -left-32 h-96 w-96" />
-        <div className="ambient-glow ambient-glow-purple top-1/3 -right-32 h-[30rem] w-[30rem]" />
+        {/* Background Ambient iOS Glows (Non-blocking, behind content) */}
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+          <div className="ambient-glow-blue absolute -left-20 -top-20 h-96 w-96 rounded-full blur-3xl" />
+          <div className="ambient-glow-purple absolute -right-20 top-1/3 h-[28rem] w-[28rem] rounded-full blur-3xl" />
+        </div>
 
         <div className="relative flex min-h-screen flex-col pb-20 md:pb-0">
           {children}
