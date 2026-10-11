@@ -204,21 +204,24 @@ export default function MarketplacePage() {
             >
               All Categories
             </button>
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedCategory(c.id)}
-                className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  selectedCategory === c.id
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
-                }`}
-              >
-                <span>{c.emoji}</span>
-                <span>{c.name}</span>
-              </button>
-            ))}
+            {categories.map((c) => {
+              const Icon = c.icon;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(c.id)}
+                  className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                    selectedCategory === c.id
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{c.name}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Product Grid */}

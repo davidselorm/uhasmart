@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPin, Phone, MessageSquare, Store } from "lucide-react";
-import { categories } from "@/lib/data";
+import { categories, getCategoryIcon } from "@/lib/data";
 
 export interface ProductItem {
   id: string;
@@ -27,6 +27,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, onInquire }: ProductCardProps) {
   const categoryObj = categories.find((c) => c.id === product.category);
+  const CategoryIcon = getCategoryIcon(product.category);
   const sellerName = product.profiles?.business_name || product.profiles?.display_name || "Student Seller";
   const sellerPhone = product.profiles?.phone_number;
 
@@ -34,8 +35,9 @@ export default function ProductCard({ product, onInquire }: ProductCardProps) {
     <div className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:border-blue-200 hover:shadow-md">
       <div>
         <div className="flex items-center justify-between gap-2">
-          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-            {categoryObj?.emoji} {categoryObj?.name ?? product.category}
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+            <CategoryIcon className="h-3.5 w-3.5 text-blue-600" />
+            <span>{categoryObj?.name ?? product.category}</span>
           </span>
           <span className="flex items-center gap-1 text-xs text-gray-500">
             <MapPin className="h-3 w-3 text-gray-400" />

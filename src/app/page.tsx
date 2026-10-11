@@ -2,8 +2,8 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CategoryCard from "@/components/CategoryCard";
-import BusinessCard from "@/components/BusinessCard";
-import { categories, sampleBusinesses } from "@/lib/data";
+import FeaturedListings from "@/components/FeaturedListings";
+import { categories } from "@/lib/data";
 import {
   ArrowRight,
   ShoppingBag,
@@ -97,26 +97,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FEATURED STUDENT BUSINESSES */}
-        <section className="bg-white py-16 border-y border-gray-100">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-600">Student Entrepreneurs</span>
-              <h2 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-                Featured Campus Brands
-              </h2>
-              <p className="mx-auto mt-2 max-w-xl text-xs text-gray-500">
-                Support fellow UHAS students running food, fashion, and tech services right on your campus.
-              </p>
-            </div>
-
-            <div className="mt-10 grid gap-6 sm:grid-cols-3">
-              {sampleBusinesses.map((biz) => (
-                <BusinessCard key={biz.id} business={biz} />
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* LIVE CAMPUS LISTINGS & TRUST SECTION */}
+        <FeaturedListings />
 
         {/* HOW IT WORKS */}
         <section className="py-16">
