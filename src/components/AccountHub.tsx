@@ -522,7 +522,7 @@ export default function AccountHub() {
 
           <div>
             <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-              Primary Campus Location
+              Primary Location in Ho / Suburb
             </label>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />

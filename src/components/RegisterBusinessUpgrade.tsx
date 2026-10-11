@@ -164,7 +164,7 @@ export default function RegisterBusinessUpgrade({
 
         <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-            Primary Campus / Hostel Location <span className="text-red-500">*</span>
+            Primary Location in Ho / Suburb <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />

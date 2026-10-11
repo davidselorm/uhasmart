@@ -14,7 +14,9 @@ import {
   X,
   Loader2,
   CheckCircle2,
+  Phone,
 } from "lucide-react";
+import { createWhatsAppUrl } from "@/lib/whatsapp";
 
 export default function MarketplacePage() {
   const supabase = createClient();
@@ -142,10 +144,10 @@ export default function MarketplacePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Header */}
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">UHAS Ho Campus</span>
-            <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">Campus Marketplace</h1>
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Ho Marketplace</span>
+            <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">Campus &amp; Town Marketplace</h1>
             <p className="mt-1 text-xs text-gray-500">
-              Browse deals posted by students across Sokode, Dave, and Trafalgar hostels.
+              Browse hostels, groceries, salons, gadgets &amp; student services across all of Ho.
             </p>
           </div>
 
@@ -157,7 +159,7 @@ export default function MarketplacePage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products, shoes, food, books..."
+                placeholder="Search hostels, salons, groceries, shoes, gadgets..."
                 className="w-full rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
@@ -170,7 +172,7 @@ export default function MarketplacePage() {
                   onChange={(e) => setSelectedLocation(e.target.value)}
                   className="w-full sm:w-auto rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-8 pr-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                 >
-                  <option value="all">All Campuses</option>
+                  <option value="all">All Ho Locations</option>
                   {campusLocations.map((loc) => (
                     <option key={loc.id} value={loc.name}>
                       {loc.name}
@@ -273,6 +275,52 @@ export default function MarketplacePage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {/* Quick WhatsApp Action */}
+            {inquireProduct && (
+              (() => {
+                const whatsAppModalUrl = createWhatsAppUrl(
+                  inquireProduct.profiles?.phone_number,
+                  `Hello ${
+                    inquireProduct.profiles?.business_name || inquireProduct.profiles?.display_name || "Vendor"
+                  }, I saw your listing "${inquireProduct.title}" (GHS ${Number(inquireProduct.price_ghs).toFixed(
+                    2
+                  )}) on UHASMART. Is it still available?`
+                );
+
+                if (!whatsAppModalUrl) return null;
+
+                return (
+                  <div className="mt-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 p-3.5">
+                    <p className="text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Instant WhatsApp Contact</span>
+                    </p>
+                    <p className="text-[11px] text-emerald-700 mb-3">
+                      Chat directly with the vendor for fast pickup or delivery in Ho.
+                    </p>
+                    <a
+                      href={whatsAppModalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-extrabold text-white shadow-sm shadow-emerald-600/25 hover:bg-emerald-700 active:scale-95 transition-all"
+                    >
+                      <Phone className="h-4 w-4" />
+                      <span>Chat on WhatsApp Directly</span>
+                    </a>
+
+                    <div className="relative my-3 text-center">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-emerald-200/80" />
+                      </div>
+                      <span className="relative bg-emerald-50/80 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                        or send in-app message below
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
 
             <form onSubmit={handleSendInquiry} className="mt-4 space-y-3">
               {inquiryNotice && (

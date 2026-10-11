@@ -220,13 +220,13 @@ export default function AuthForm({ mode, defaultRole = "customer" }: AuthFormPro
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Interested student buyers will contact you via this number.
+                Interested buyers across Ho will contact you directly on WhatsApp via this number.
               </p>
             </div>
 
             <div>
               <label htmlFor="campusLocation" className="mb-1.5 block text-sm font-medium text-gray-700">
-                Primary Campus Location / Hostel
+                Primary Location in Ho / Suburb
               </label>
               <div className="relative">
                 <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />

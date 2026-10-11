@@ -7,6 +7,9 @@ import {
   Printer,
   Camera,
   Layers,
+  Home,
+  ShoppingBasket,
+  Scissors,
   LucideIcon,
 } from "lucide-react";
 
@@ -23,60 +26,89 @@ export interface CampusLocation {
 }
 
 export const campusLocations: CampusLocation[] = [
-  { id: "sokode", name: "Sokode Main Campus" },
-  { id: "trafalgar", name: "Trafalgar Campus / Hospital" },
-  { id: "dave", name: "Dave Campus" },
-  { id: "adaklu", name: "Adaklu / Surrounding Hostels" },
-  { id: "ho-town", name: "Ho Central / Town Hostels" },
+  { id: "ho-central", name: "Ho Central / Main Market" },
+  { id: "bankoe", name: "Bankoe" },
+  { id: "heve", name: "Heve" },
+  { id: "dome", name: "Dome" },
+  { id: "ahoe", name: "Ahoe" },
+  { id: "fiave", name: "Fiave" },
+  { id: "kpodzi", name: "Kpodzi" },
+  { id: "htu-poly", name: "HTU / Poly Area" },
+  { id: "barracks-airport", name: "Barracks / Airport Area" },
+  { id: "sokode", name: "Sokode / UHAS Main Campus" },
+  { id: "trafalgar", name: "Trafalgar / Ho Teaching Hospital" },
+  { id: "dave", name: "Dave Campus & Surroundings" },
+  { id: "lokoe", name: "Lokoe" },
+  { id: "adaklu", name: "Adaklu / Border Hostels" },
+  { id: "taviefe-anyirawase", name: "Taviefe / Anyirawase Road" },
+  { id: "ho-wide", name: "Across Ho (Delivery Available)" },
 ];
 
 export const categories: Category[] = [
   {
+    id: "hostels",
+    name: "Hostels & Accommodations",
+    description: "Student hostels, homestays, self-contain rooms & shared apartments",
+    icon: Home,
+  },
+  {
     id: "food",
     name: "Food & Drinks",
-    description: "Campus meals, snacks, smoothies & drinks",
+    description: "Campus meals, snacks, smoothies, chops & fast food",
     icon: Utensils,
+  },
+  {
+    id: "groceries",
+    name: "Groceries & Essentials",
+    description: "Provisions, toiletries, bottled water, snacks & daily dorm needs",
+    icon: ShoppingBasket,
+  },
+  {
+    id: "salons-barbers",
+    name: "Salons & Barbers",
+    description: "Hair styling, braiding, dreadlocks, fades, barbering & wig revamping",
+    icon: Scissors,
   },
   {
     id: "fashion",
     name: "Fashion & Wears",
-    description: "Clothing, thrift shoes, watches & bags",
+    description: "Clothing, thrift shoes, sneakers, watches, bags & accessories",
     icon: Shirt,
   },
   {
     id: "electronics",
     name: "Tech & Gadgets",
-    description: "Laptops, phones, chargers, power banks",
+    description: "Laptops, smartphones, chargers, power banks & device repairs",
     icon: Laptop,
   },
   {
     id: "beauty",
     name: "Beauty & Grooming",
-    description: "Hair care, skincare, perfumes, barbering",
+    description: "Skincare, cosmetics, perfumes, makeup & personal care",
     icon: Sparkles,
   },
   {
     id: "academic-services",
     name: "Academic & Books",
-    description: "Textbooks, medical notes, lab coats",
+    description: "Textbooks, medical notes, lab coats, dissection kits & tutoring",
     icon: BookOpen,
   },
   {
     id: "printing",
     name: "Printing & Design",
-    description: "Photocopying, flyers, graphic design",
+    description: "Photocopying, project binding, flyers, banner design & stationery",
     icon: Printer,
   },
   {
     id: "photography",
     name: "Photography & Media",
-    description: "Event coverage, portraits, editing",
+    description: "Event coverage, portrait sessions, graduation shoots & editing",
     icon: Camera,
   },
   {
     id: "other",
     name: "Other Services",
-    description: "Room accessories, delivery & errands",
+    description: "Room décor, laundry, errands & artisan services in Ho",
     icon: Layers,
   },
 ];

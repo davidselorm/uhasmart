@@ -23,15 +23,15 @@ export default function HomePage() {
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50/70 px-4 py-1.5 text-xs font-bold text-blue-700 shadow-sm">
               <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-              <span>Official Student Marketplace &bull; UHAS Ho Campus</span>
+              <span>Student &amp; Town Marketplace &bull; Ho, Volta Region</span>
             </div>
 
             <h1 className="mx-auto mt-6 max-w-4xl text-4xl font-extrabold tracking-tight text-gray-900 sm:text-6xl">
-              Your Campus. <span className="text-blue-600">Your Marketplace.</span>
+              Your Campus &amp; City. <span className="text-blue-600">Your Marketplace.</span>
             </h1>
 
             <p className="mx-auto mt-4 max-w-2xl text-base text-gray-600 sm:text-lg">
-              Buy and sell products, thrift wears, gadgets, campus food, and academic services directly with verified students across Sokode, Dave, and Trafalgar campuses.
+              Find student hostels, groceries, salons, gadgets, food, and services across all parts of Ho — from Sokode, Dave, and Trafalgar to Bankoe, Dome, and Ho Central.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

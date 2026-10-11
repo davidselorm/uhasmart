@@ -43,12 +43,12 @@ export default function FeaturedListings() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Live Campus Market</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Live Ho Marketplace</span>
             <h2 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">
-              Recent Campus Listings
+              Recent Listings in Ho
             </h2>
             <p className="mt-1 text-xs text-gray-500">
-              Verified items posted by UHAS students across Sokode, Dave, and Trafalgar.
+              Verified items, hostels, and services posted across Sokode, Dave, Trafalgar, Bankoe, Dome &amp; Central Ho.
             </p>
           </div>
           <Link

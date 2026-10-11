@@ -708,7 +708,7 @@ export default function SellerDashboard() {
 
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Hostel / Campus Pickup Location <span className="text-red-500">*</span>
+                  Pickup / Service Location in Ho <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={location}
