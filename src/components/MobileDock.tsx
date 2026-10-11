@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Search, Plus, MessageSquare, User } from "lucide-react";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
 
 export default function MobileDock() {
   const pathname = usePathname();
+  const { unreadCount, hasUnread } = useUnreadMessages();
 
   const links = [
     { href: "/", label: "Home", icon: Home },
     { href: "/marketplace", label: "Market", icon: Search },
     { href: "/seller", label: "Sell", icon: Plus, isAction: true },
     { href: "/messages", label: "Chats", icon: MessageSquare },
-    { href: "/login", label: "Account", icon: User },
+    { href: "/account", label: "Account", icon: User },
   ];
 
   return (
@@ -23,7 +25,7 @@ export default function MobileDock() {
       <div className="flex items-center justify-around">
         {links.map((link) => {
           const Icon = link.icon;
-          const isActive = pathname === link.href;
+          const isActive = pathname === link.href || (link.href === "/account" && pathname === "/login");
 
           if (link.isAction) {
             return (
@@ -44,11 +46,18 @@ export default function MobileDock() {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex flex-col items-center py-1 transition-all active:scale-95 ${
+              className={`relative flex flex-col items-center py-1 transition-all active:scale-95 ${
                 isActive ? "text-blue-600 font-bold" : "text-gray-500 hover:text-gray-900"
               }`}
             >
-              <Icon className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+              <div className="relative">
+                <Icon className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+                {link.href === "/messages" && hasUnread && (
+                  <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-sm">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </div>
               <span className="mt-0.5 text-[10px]">{link.label}</span>
             </Link>
           );

@@ -4,6 +4,9 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
+import { campusLocations } from "@/lib/data";
+import RegisterBusinessUpgrade from "@/components/RegisterBusinessUpgrade";
 import {
   ShieldCheck,
   Mail,
@@ -21,6 +24,8 @@ import {
   AlertCircle,
   Trash2,
   AlertTriangle,
+  Sparkles,
+  X,
 } from "lucide-react";
 
 interface ProfileData {
@@ -34,6 +39,8 @@ interface ProfileData {
 export default function AccountHub() {
   const router = useRouter();
   const supabase = createClient();
+  const { unreadCount, hasUnread } = useUnreadMessages();
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -50,6 +57,9 @@ export default function AccountHub() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState("");
   const [profileError, setProfileError] = useState("");
+
+  // Business upgrade modal state
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -99,7 +109,7 @@ export default function AccountHub() {
           setEditDisplayName(p.display_name || "");
           setEditBusinessName(p.business_name || "");
           setEditPhone(p.phone_number || "");
-          setEditLocation(p.campus_location || "");
+          setEditLocation(p.campus_location || campusLocations[0].name);
         } else {
           const defaultName = authData.user.email?.split("@")[0] || "Student";
           setProfile({
@@ -107,6 +117,7 @@ export default function AccountHub() {
             role: "customer",
           });
           setEditDisplayName(defaultName);
+          setEditLocation(campusLocations[0].name);
         }
 
         if (adminRes.data) setIsAdmin(Boolean(adminRes.data));
@@ -141,11 +152,11 @@ export default function AccountHub() {
       const updates: Partial<ProfileData> = {
         display_name: editDisplayName.trim(),
         campus_location: editLocation.trim() || null,
+        phone_number: editPhone.trim() || null,
       };
 
       if (profile?.role === "seller") {
         updates.business_name = editBusinessName.trim() || null;
-        updates.phone_number = editPhone.trim() || null;
       }
 
       const { error: updateError } = await supabase.from("profiles").update(updates).eq("id", user.id);
@@ -232,28 +243,27 @@ export default function AccountHub() {
 
   if (loading) {
     return (
-      <div className="flex w-full max-w-md flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+      <div className="flex w-full max-w-md flex-col items-center justify-center rounded-3xl glass-card p-12 text-center shadow-lg">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-        <p className="mt-4 text-sm font-medium text-gray-500">Loading your account...</p>
+        <p className="mt-4 text-xs font-semibold text-gray-500">Loading your student account...</p>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="flex w-full max-w-md flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-8 text-center shadow-sm">
-        <p className="text-base font-bold text-gray-900">Sign In to Continue</p>
-        <p className="mt-1 text-xs text-gray-500">No active session found or your previous session expired.</p>
-        <button
-          type="button"
-          onClick={() => {
-            void supabase?.auth.signOut();
-            window.location.reload();
-          }}
-          className="mt-4 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
+      <div className="flex w-full max-w-md flex-col items-center justify-center rounded-3xl glass-card p-8 text-center shadow-xl">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 mb-3">
+          <User className="h-6 w-6" />
+        </div>
+        <p className="text-base font-bold text-gray-900">Sign In to View Account</p>
+        <p className="mt-1 text-xs text-gray-500">You must be logged in to manage your profile and listings.</p>
+        <Link
+          href="/login"
+          className="mt-5 rounded-2xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 active:scale-95"
         >
-          Go to Sign In
-        </button>
+          Sign In
+        </Link>
       </div>
     );
   }
@@ -263,10 +273,10 @@ export default function AccountHub() {
   const businessName = profile?.business_name;
 
   return (
-    <section className="w-full max-w-xl rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+    <section className="w-full max-w-2xl rounded-3xl glass-card p-5 sm:p-8 shadow-xl border border-white/60">
       {/* Profile Header */}
-      <div className="flex items-center gap-4 border-b border-gray-100 pb-6">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-2xl font-extrabold text-white shadow-md shadow-blue-500/20">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-gray-100 pb-6">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-2xl font-black text-white shadow-md shadow-blue-500/20 shrink-0">
           {displayName.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
@@ -274,127 +284,173 @@ export default function AccountHub() {
             <h1 className="truncate text-xl font-extrabold text-gray-900">{displayName}</h1>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                isSeller ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
+                isSeller ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-blue-100 text-blue-800 border border-blue-200"
               }`}
             >
-              {isSeller ? "Student Seller" : "Student Customer"}
+              {isSeller ? "Verified Student Seller" : "Student Customer"}
             </span>
+            {isAdmin && (
+              <span className="rounded-full bg-purple-100 border border-purple-200 px-2.5 py-0.5 text-xs font-bold text-purple-800">
+                Admin
+              </span>
+            )}
           </div>
           <p className="flex items-center gap-1.5 truncate text-xs text-gray-500 mt-1">
             <Mail className="h-3.5 w-3.5 text-gray-400" />
-            {user.email}
+            <span>{user.email}</span>
           </p>
+          {profile?.campus_location && (
+            <p className="flex items-center gap-1.5 text-xs text-blue-700 font-medium mt-1">
+              <MapPin className="h-3.5 w-3.5 text-blue-600" />
+              <span>{profile.campus_location}</span>
+            </p>
+          )}
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mt-6 flex gap-2 border-b border-gray-100 pb-3">
+      <div className="mt-5 flex gap-1.5 border-b border-gray-100 pb-3 overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => setActiveTab("overview")}
-          className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
-            activeTab === "overview" ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
+          className={`flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold transition-all shrink-0 active:scale-95 ${
+            activeTab === "overview" ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" : "text-gray-600 hover:bg-white/80"
           }`}
         >
           <User className="h-3.5 w-3.5" />
-          Overview
+          <span>Overview</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("edit-profile")}
-          className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
-            activeTab === "edit-profile" ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
+          className={`flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold transition-all shrink-0 active:scale-95 ${
+            activeTab === "edit-profile" ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" : "text-gray-600 hover:bg-white/80"
           }`}
         >
           <Building className="h-3.5 w-3.5" />
-          Edit Profile
+          <span>Edit Profile</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("security")}
-          className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
-            activeTab === "security" ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"
+          className={`flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold transition-all shrink-0 active:scale-95 ${
+            activeTab === "security" ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" : "text-gray-600 hover:bg-white/80"
           }`}
         >
           <KeyRound className="h-3.5 w-3.5" />
-          Password &amp; Security
+          <span>Password &amp; Security</span>
         </button>
       </div>
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === "overview" && (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 space-y-3.5">
           {isSeller ? (
             <Link
               href="/seller"
-              className="group flex items-center justify-between rounded-2xl border border-purple-100 bg-purple-50/50 p-4 transition-all hover:bg-purple-100/60"
+              className="group flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 transition-all hover:bg-emerald-100/60 shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
                   <Store className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-sm font-bold text-purple-950">
+                  <p className="text-sm font-bold text-emerald-950">
                     {businessName || "My Campus Shop"}
                   </p>
-                  <p className="text-xs text-purple-700">
-                    {listingCount} items listed &bull; Manage products &amp; orders
+                  <p className="text-xs text-emerald-700">
+                    {listingCount} listings &bull; Manage campus products
                   </p>
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 text-purple-500 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRight className="h-4 w-4 text-emerald-600 transition-transform group-hover:translate-x-0.5" />
             </Link>
           ) : (
-            <Link
-              href="/register-business"
-              className="group flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50/50 p-4 transition-all hover:bg-blue-100/60"
-            >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-                  <Store className="h-5 w-5" />
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shrink-0">
+                  <Sparkles className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-sm font-bold text-blue-950">Start Selling on UHASMART</p>
-                  <p className="text-xs text-blue-700">Register your brand and reach students</p>
+                  <p className="text-sm font-bold text-blue-950">Sell on UHASMART</p>
+                  <p className="text-xs text-blue-700">Register your student brand &amp; post products</p>
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4 text-blue-500 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 active:scale-95 shrink-0"
+              >
+                <span>Upgrade to Seller</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
 
+          {/* Inquiry Messages Shortcut with Live Badge */}
           <Link
             href="/messages"
-            className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 transition-all hover:bg-gray-100/70"
+            className="group flex items-center justify-between rounded-2xl border border-gray-200/80 bg-white/70 p-4 transition-all hover:bg-white shadow-sm"
           >
             <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-900 text-white shadow-sm">
+              <span className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
                 <MessageSquare className="h-5 w-5" />
+                {hasUnread && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                    {unreadCount}
+                  </span>
+                )}
               </span>
               <div>
-                <p className="text-sm font-bold text-gray-900 group-hover:text-blue-700">Inquiry Messages</p>
-                <p className="text-xs text-gray-500">Private buyer &amp; seller chats</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-gray-900 group-hover:text-blue-700">Inquiry Messages</p>
+                  {hasUnread && (
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 border border-rose-200 animate-pulse">
+                      New messages
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">Real-time buyer &amp; seller chats</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
           </Link>
 
+          {/* Admin Control Center (if applicable) */}
           {isAdmin && (
             <Link
               href="/admin"
-              className="group flex items-center justify-between rounded-2xl border border-purple-100 bg-purple-50/60 p-4 transition-all hover:bg-purple-100/60"
+              className="group flex items-center justify-between rounded-2xl border border-purple-200/80 bg-purple-50/60 p-4 transition-all hover:bg-purple-100/60 shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-700 text-white shadow-sm">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-700 text-white shadow-sm">
                   <ShieldCheck className="h-5 w-5" />
                 </span>
                 <div>
                   <p className="text-sm font-bold text-purple-900">Admin Control Center</p>
-                  <p className="text-xs text-purple-700">Moderation, users &amp; queue</p>
+                  <p className="text-xs text-purple-700">Moderation, users &amp; queue approvals</p>
                 </div>
               </div>
               <ArrowRight className="h-4 w-4 text-purple-600 transition-transform group-hover:translate-x-0.5" />
             </Link>
           )}
+
+          {/* Browse Marketplace */}
+          <Link
+            href="/marketplace"
+            className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white/40 p-4 transition-all hover:bg-white/80"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-700">
+                <Store className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-bold text-gray-800">Browse Campus Marketplace</p>
+                <p className="text-xs text-gray-400">Discover items from student vendors</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5" />
+          </Link>
         </div>
       )}
 
@@ -402,13 +458,13 @@ export default function AccountHub() {
       {activeTab === "edit-profile" && (
         <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
           {profileSuccess && (
-            <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3 text-sm text-green-700">
+            <div className="flex items-center gap-2 rounded-2xl bg-green-50 p-3 text-xs font-semibold text-green-700 border border-green-200">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>{profileSuccess}</span>
             </div>
           )}
           {profileError && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+            <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{profileError}</span>
             </div>
@@ -416,76 +472,81 @@ export default function AccountHub() {
 
           <div>
             <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-              Full Name
+              Display / Full Name
             </label>
             <input
               type="text"
               required
               value={editDisplayName}
               onChange={(e) => setEditDisplayName(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
             />
           </div>
 
           {isSeller && (
-            <>
-              <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-                  Business / Brand Name
-                </label>
-                <div className="relative">
-                  <Building className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    required
-                    value={editBusinessName}
-                    onChange={(e) => setEditBusinessName(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 pl-10 pr-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-                  />
-                </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
+                Business / Brand Name
+              </label>
+              <div className="relative">
+                <Building className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  value={editBusinessName}
+                  onChange={(e) => setEditBusinessName(e.target.value)}
+                  className="w-full rounded-2xl border border-gray-200 bg-white/80 pl-10 pr-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+                />
               </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-                  WhatsApp / Phone Number
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
-                  <input
-                    type="tel"
-                    required
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 pl-10 pr-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-                  />
-                </div>
-              </div>
-            </>
+            </div>
           )}
 
           <div>
             <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
-              Campus Location / Hostel
+              WhatsApp / Phone Number
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
+              <input
+                type="tel"
+                placeholder="e.g. 024 123 4567"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                className="w-full rounded-2xl border border-gray-200 bg-white/80 pl-10 pr-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Used so students can message you for fast campus deliveries.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-600">
+              Primary Campus Location
             </label>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="e.g. Sokode Campus / Asikuma Hostel"
+              <select
                 value={editLocation}
                 onChange={(e) => setEditLocation(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 pl-10 pr-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-              />
+                className="w-full rounded-2xl border border-gray-200 bg-white/80 pl-10 pr-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+              >
+                {campusLocations.map((loc) => (
+                  <option key={loc.id} value={loc.name}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           <button
             type="submit"
             disabled={savingProfile}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95"
           >
             {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            <span>Save Profile Changes</span>
+            <span>Save Profile Details</span>
           </button>
         </form>
       )}
@@ -494,16 +555,16 @@ export default function AccountHub() {
       {activeTab === "security" && (
         <div className="mt-6 space-y-6">
           <form onSubmit={handleUpdatePassword} className="space-y-4">
-            <h2 className="text-sm font-bold text-gray-900">Change Password</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-600">Change Password</h2>
 
             {passwordSuccess && (
-              <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3 text-sm text-green-700">
+              <div className="flex items-center gap-2 rounded-2xl bg-green-50 p-3 text-xs font-semibold text-green-700 border border-green-200">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>{passwordSuccess}</span>
               </div>
             )}
             {passwordError && (
-              <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+              <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 border border-red-200">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{passwordError}</span>
               </div>
@@ -518,7 +579,7 @@ export default function AccountHub() {
                 required
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
@@ -532,7 +593,7 @@ export default function AccountHub() {
                 minLength={6}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
@@ -546,14 +607,14 @@ export default function AccountHub() {
                 minLength={6}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-2.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
               />
             </div>
 
             <button
               type="submit"
               disabled={savingPassword}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95"
             >
               {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               <span>Update Password</span>
@@ -562,9 +623,9 @@ export default function AccountHub() {
 
           {/* Danger Zone */}
           <div className="rounded-2xl border border-red-200 bg-red-50/50 p-5">
-            <h3 className="text-sm font-bold text-red-900 flex items-center gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-red-900 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-600" />
-              Danger Zone
+              <span>Danger Zone</span>
             </h3>
             <p className="mt-1 text-xs text-red-700">
               Permanently delete your UHASMART account, products, and inquiry data.
@@ -573,10 +634,10 @@ export default function AccountHub() {
             <button
               type="button"
               onClick={() => setShowDeleteModal(true)}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3.5 py-2 text-xs font-bold text-red-700 shadow-sm hover:bg-red-50"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3.5 py-2 text-xs font-bold text-red-700 shadow-sm hover:bg-red-50 active:scale-95"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete Account
+              <span>Delete Account</span>
             </button>
           </div>
         </div>
@@ -588,20 +649,45 @@ export default function AccountHub() {
           type="button"
           onClick={handleSignOut}
           disabled={signingOut}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white/70 px-4 py-3 text-xs font-bold text-gray-700 shadow-sm hover:bg-white disabled:opacity-50 active:scale-95"
         >
           {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
           <span>{signingOut ? "Signing out..." : "Sign Out"}</span>
         </button>
       </div>
 
+      {/* Business Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-t-[2rem] sm:rounded-3xl glass-modal p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+              <h3 className="text-base font-extrabold text-gray-900">Upgrade to Campus Seller</h3>
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(false)}
+                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 active:scale-95"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <RegisterBusinessUpgrade
+              initialDisplayName={displayName}
+              onSuccess={() => {
+                setShowUpgradeModal(false);
+                setProfile((prev) => (prev ? { ...prev, role: "seller" } : null));
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-extrabold text-gray-900">Are you absolutely sure?</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl glass-modal p-6 shadow-2xl">
+            <h3 className="text-base font-extrabold text-gray-900">Are you absolutely sure?</h3>
             <p className="mt-2 text-xs leading-relaxed text-gray-600">
-              This action cannot be undone. All your listings, messages, and profile information will be deleted.
+              This action cannot be undone. All your listings, messages, and student profile information will be deleted.
             </p>
             <p className="mt-3 text-xs font-bold text-gray-800">
               Please type <span className="font-mono text-red-600">DELETE</span> to confirm:
@@ -611,7 +697,7 @@ export default function AccountHub() {
               value={deleteConfirmation}
               onChange={(e) => setDeleteConfirmation(e.target.value)}
               placeholder="DELETE"
-              className="mt-2 w-full rounded-xl border border-gray-300 px-3.5 py-2 text-sm text-gray-900 focus:border-red-600 focus:outline-none"
+              className="mt-2 w-full rounded-2xl border border-gray-200 px-3.5 py-2.5 text-xs text-gray-900 focus:border-red-600 focus:outline-none"
             />
             {deleteError && (
               <p className="mt-2 text-xs font-semibold text-red-600">{deleteError}</p>
@@ -624,7 +710,7 @@ export default function AccountHub() {
                   setDeleteConfirmation("");
                   setDeleteError("");
                 }}
-                className="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                className="flex-1 rounded-2xl border border-gray-200 bg-white py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 active:scale-95"
               >
                 Cancel
               </button>
@@ -632,7 +718,7 @@ export default function AccountHub() {
                 type="button"
                 disabled={deletingAccount || deleteConfirmation !== "DELETE"}
                 onClick={handleDeleteAccount}
-                className="flex-1 rounded-xl bg-red-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                className="flex-1 rounded-2xl bg-red-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 active:scale-95"
               >
                 {deletingAccount ? "Deleting..." : "Permanently Delete"}
               </button>

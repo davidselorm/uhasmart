@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, ShoppingBag, UserRound, X, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -19,6 +20,7 @@ export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const supabase = createClient();
+  const { unreadCount, hasUnread } = useUnreadMessages();
 
   useEffect(() => {
     if (!supabase) return;
@@ -80,13 +82,18 @@ export default function Navbar() {
               key={link.href}
               href={link.href}
               aria-current={pathname === link.href ? "page" : undefined}
-              className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+              className={`relative rounded-xl px-3.5 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${
                 pathname === link.href
                   ? "bg-blue-50 font-bold text-blue-700"
                   : "text-gray-600 hover:bg-white/70 hover:text-blue-700"
               }`}
             >
-              {link.label}
+              <span>{link.label}</span>
+              {link.href === "/messages" && hasUnread && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-sm animate-pulse">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Link>
           ))}
           {isAdmin && (
@@ -104,7 +111,7 @@ export default function Navbar() {
             </Link>
           )}
           <Link
-            href="/login"
+            href={isLoggedIn ? "/account" : "/login"}
             className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
               isLoggedIn
                 ? "bg-blue-50 text-blue-700 hover:bg-blue-100/70"
@@ -118,12 +125,15 @@ export default function Navbar() {
 
         <button
           type="button"
-          className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+          className="relative rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
           aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
           aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((open) => !open)}
         >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {!mobileOpen && hasUnread && (
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+          )}
         </button>
       </div>
 
@@ -135,13 +145,18 @@ export default function Navbar() {
               href={link.href}
               aria-current={pathname === link.href ? "page" : undefined}
               onClick={() => setMobileOpen(false)}
-              className={`block rounded-xl px-3.5 py-2.5 text-sm font-medium ${
+              className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium ${
                 pathname === link.href
                   ? "bg-blue-50 font-bold text-blue-700"
                   : "text-gray-700 hover:bg-white/70 hover:text-blue-700"
               }`}
             >
-              {link.label}
+              <span>{link.label}</span>
+              {link.href === "/messages" && hasUnread && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-sm">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Link>
           ))}
           {isAdmin && (
@@ -160,11 +175,11 @@ export default function Navbar() {
             </Link>
           )}
           <Link
-            href="/login"
-            aria-current={pathname === "/login" ? "page" : undefined}
+            href={isLoggedIn ? "/account" : "/login"}
+            aria-current={pathname === (isLoggedIn ? "/account" : "/login") ? "page" : undefined}
             onClick={() => setMobileOpen(false)}
             className={`block rounded-xl px-3.5 py-2.5 text-sm font-semibold ${
-              pathname === "/login"
+              pathname === (isLoggedIn ? "/account" : "/login")
                 ? "bg-blue-50 font-bold text-blue-700"
                 : "text-blue-700 hover:bg-white/70"
             }`}

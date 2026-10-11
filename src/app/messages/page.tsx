@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, FormEvent, useCallback } from "react";
+import { useEffect, useState, FormEvent, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { createClient } from "@/lib/supabase/client";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
 import {
   MessageSquare,
   Send,
@@ -11,6 +12,9 @@ import {
   Store,
   User,
   ChevronLeft,
+  Radio,
+  Clock,
+  Sparkles,
 } from "lucide-react";
 
 interface InquiryThread {
@@ -34,6 +38,8 @@ interface MessageItem {
 
 export default function MessagesPage() {
   const supabase = createClient();
+  const { markAllRead } = useUnreadMessages();
+
   const [currentUser, setCurrentUser] = useState<{ id: string; email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [threads, setThreads] = useState<InquiryThread[]>([]);
@@ -43,64 +49,86 @@ export default function MessagesPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Clear unread badge when viewing the messages page
+  useEffect(() => {
+    markAllRead();
+  }, [markAllRead]);
+
+  // Auto-scroll to bottom of conversation
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
-    async function loadThreads() {
-      if (!supabase) {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // Load threads
+  const loadThreads = useCallback(async () => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData?.user) {
         setLoading(false);
         return;
       }
 
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) {
-          setLoading(false);
-          return;
+      setCurrentUser(authData.user);
+
+      const { data: inqList, error } = await supabase
+        .from("inquiries")
+        .select("id,listing_id,buyer_id,seller_id,created_at,listings(id,title,price_ghs)")
+        .or(`buyer_id.eq.${authData.user.id},seller_id.eq.${authData.user.id}`)
+        .order("created_at", { ascending: false });
+
+      if (!error && inqList) {
+        setThreads(inqList as unknown as InquiryThread[]);
+        if (inqList.length > 0 && !activeThreadId) {
+          setActiveThreadId(inqList[0].id);
         }
-
-        setCurrentUser(authData.user);
-
-        const { data: inqList, error } = await supabase
-          .from("inquiries")
-          .select("id,listing_id,buyer_id,seller_id,created_at,listings(id,title,price_ghs)")
-          .or(`buyer_id.eq.${authData.user.id},seller_id.eq.${authData.user.id}`)
-          .order("created_at", { ascending: false });
-
-        if (!error && inqList) {
-          setThreads(inqList as unknown as InquiryThread[]);
-          if (inqList.length > 0) {
-            setActiveThreadId(inqList[0].id);
-          }
-        }
-      } catch (err) {
-        console.error("Error loading inquiry threads:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    void loadThreads();
-  }, [supabase]);
-
-  const loadMessages = useCallback(async (inquiryId: string) => {
-    if (!supabase) return;
-    setLoadingMessages(true);
-    try {
-      const { data, error } = await supabase
-        .from("inquiry_messages")
-        .select("*")
-        .eq("inquiry_id", inquiryId)
-        .order("created_at", { ascending: true });
-
-      if (!error && data) {
-        setMessages(data as MessageItem[]);
       }
     } catch (err) {
-      console.error("Error loading messages:", err);
+      console.error("Error loading inquiry threads:", err);
     } finally {
-      setLoadingMessages(false);
+      setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, activeThreadId]);
+
+  useEffect(() => {
+    void loadThreads();
+  }, [loadThreads]);
+
+  // Load messages for the selected thread
+  const loadMessages = useCallback(
+    async (inquiryId: string) => {
+      if (!supabase) return;
+      setLoadingMessages(true);
+      try {
+        const { data, error } = await supabase
+          .from("inquiry_messages")
+          .select("*")
+          .eq("inquiry_id", inquiryId)
+          .order("created_at", { ascending: true });
+
+        if (!error && data) {
+          setMessages(data as MessageItem[]);
+        }
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     if (activeThreadId) {
@@ -108,25 +136,92 @@ export default function MessagesPage() {
     }
   }, [activeThreadId, loadMessages]);
 
+  // REALTIME: Listen to incoming messages for the active thread
+  useEffect(() => {
+    if (!supabase || !activeThreadId) return;
+
+    setIsLiveConnected(true);
+
+    const channel = supabase
+      .channel(`inquiry_thread_${activeThreadId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "inquiry_messages",
+          filter: `inquiry_id=eq.${activeThreadId}`,
+        },
+        (payload: { new: Record<string, unknown> }) => {
+          const newMsg = payload.new as unknown as MessageItem;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          markAllRead();
+        }
+      )
+      .subscribe((status: string) => {
+        setIsLiveConnected(status === "SUBSCRIBED");
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+      setIsLiveConnected(false);
+    };
+  }, [supabase, activeThreadId, markAllRead]);
+
+  // REALTIME: Listen to new inquiry threads created for this user
+  useEffect(() => {
+    if (!supabase || !currentUser) return;
+
+    const inqChannel = supabase
+      .channel(`user_inquiries_realtime_${currentUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "inquiries",
+        },
+        () => {
+          void loadThreads();
+          markAllRead();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(inqChannel);
+    };
+  }, [supabase, currentUser, loadThreads, markAllRead]);
+
+  // Send message handler
   async function handleSendMessage(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !currentUser || !activeThreadId || !newMessage.trim()) return;
 
+    const trimmedBody = newMessage.trim();
     setSending(true);
+
     try {
       const { data: inserted, error } = await supabase
         .from("inquiry_messages")
         .insert({
           inquiry_id: activeThreadId,
           sender_id: currentUser.id,
-          body: newMessage.trim(),
+          body: trimmedBody,
         })
         .select()
         .single();
 
       if (!error && inserted) {
-        setMessages((prev) => [...prev, inserted as MessageItem]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === (inserted as MessageItem).id)) return prev;
+          return [...prev, inserted as MessageItem];
+        });
         setNewMessage("");
+        markAllRead();
       }
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -143,15 +238,34 @@ export default function MessagesPage() {
 
       <main className="flex-1 py-6 sm:py-10">
         <div className="mx-auto max-w-6xl px-3 sm:px-6 lg:px-8">
-          <div className="mb-4 sm:mb-6">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Inquiry Messages</span>
-            <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">Buyer &amp; Seller Chats</h1>
+          <div className="mb-4 sm:mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-600">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Instant Campus Messaging</span>
+              </div>
+              <h1 className="mt-1 text-2xl font-extrabold text-gray-900 sm:text-3xl">
+                Buyer &amp; Seller Chats
+              </h1>
+            </div>
+
+            {/* Realtime Live Indicator */}
+            {isLiveConnected && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <Radio className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Real-Time Sync Active</span>
+              </div>
+            )}
           </div>
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-              <p className="mt-3 text-xs font-medium text-gray-500">Loading your conversations...</p>
+              <p className="mt-3 text-xs font-medium text-gray-500">Connecting to campus channels...</p>
             </div>
           ) : !currentUser ? (
             <div className="rounded-3xl glass-card p-10 text-center shadow-lg max-w-md mx-auto">
@@ -166,7 +280,7 @@ export default function MessagesPage() {
               <MessageSquare className="mx-auto h-12 w-12 text-gray-300" />
               <h3 className="mt-3 text-base font-bold text-gray-900">No active messages</h3>
               <p className="mt-1 text-xs text-gray-500">
-                When you inquire about a product or when a student messages your listing, your chats will appear here.
+                When you inquire about a product or when a student messages your listing, your chats will appear here in real time.
               </p>
             </div>
           ) : (
@@ -177,7 +291,12 @@ export default function MessagesPage() {
                   mobileThreadOpen ? "hidden md:block" : "block"
                 }`}
               >
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 px-1">Conversations</p>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Conversations</p>
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                    {threads.length} active
+                  </span>
+                </div>
                 <div className="space-y-1.5 sm:space-y-2">
                   {threads.map((thread) => {
                     const isActive = thread.id === activeThreadId;
@@ -207,8 +326,9 @@ export default function MessagesPage() {
                           <p className="text-[11px] font-semibold text-blue-600">
                             GHS {Number(thread.listings?.price_ghs ?? 0).toFixed(2)}
                           </p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">
-                            {new Date(thread.created_at).toLocaleDateString()}
+                          <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>{new Date(thread.created_at).toLocaleDateString()}</span>
                           </p>
                         </div>
                       </button>
@@ -245,47 +365,66 @@ export default function MessagesPage() {
                             GHS {Number(activeThread.listings?.price_ghs ?? 0).toFixed(2)}
                           </p>
                         </div>
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-blue-700 shrink-0">
-                          {activeThread.buyer_id === currentUser.id ? "Your Inquiry" : "Buyer Chat"}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-blue-700">
+                            {activeThread.buyer_id === currentUser.id ? "Your Inquiry" : "Buyer Chat"}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
                     {/* Messages Body */}
-                    <div className="flex-1 overflow-y-auto py-4 sm:py-6 space-y-3 min-h-[300px] max-h-[50vh] sm:max-h-[60vh]">
+                    <div className="flex-1 overflow-y-auto py-4 sm:py-6 space-y-3 min-h-[300px] max-h-[50vh] sm:max-h-[60vh] no-scrollbar">
                       {loadingMessages ? (
                         <div className="flex justify-center py-10">
                           <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                         </div>
                       ) : messages.length === 0 ? (
-                        <p className="text-center text-xs text-gray-400 py-10">
-                          No messages yet. Send a greeting or ask where to meet on campus!
-                        </p>
+                        <div className="text-center py-12">
+                          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-2">
+                            <MessageSquare className="h-5 w-5" />
+                          </div>
+                          <p className="text-xs font-semibold text-gray-700">No messages yet</p>
+                          <p className="text-[11px] text-gray-400 mt-1 max-w-xs mx-auto">
+                            Send a greeting to arrange a meetup at Sokode, Trafalgar, or Dave campus!
+                          </p>
+                        </div>
                       ) : (
                         messages.map((msg) => {
                           const isMine = msg.sender_id === currentUser.id;
                           return (
                             <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                               <div
-                                className={`max-w-[85%] sm:max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-sm ${
+                                className={`max-w-[85%] sm:max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-sm transition-all ${
                                   isMine
                                     ? "bg-blue-600 text-white rounded-br-none"
                                     : "bg-white border border-gray-200/80 text-gray-900 rounded-bl-none"
                                 }`}
                               >
                                 <p className="leading-relaxed whitespace-pre-wrap">{msg.body}</p>
-                                <p className={`text-[9px] mt-1 text-right ${isMine ? "text-blue-200" : "text-gray-400"}`}>
-                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                <p
+                                  className={`text-[9px] mt-1 text-right ${
+                                    isMine ? "text-blue-200" : "text-gray-400"
+                                  }`}
+                                >
+                                  {new Date(msg.created_at).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
                                 </p>
                               </div>
                             </div>
                           );
                         })
                       )}
+                      <div ref={messagesEndRef} />
                     </div>
 
                     {/* Send Input */}
-                    <form onSubmit={handleSendMessage} className="flex items-center gap-2 border-t border-gray-100 pt-3 sm:pt-4">
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="flex items-center gap-2 border-t border-gray-100 pt-3 sm:pt-4"
+                    >
                       <input
                         type="text"
                         required
@@ -296,7 +435,7 @@ export default function MessagesPage() {
                       />
                       <button
                         type="submit"
-                        disabled={sending}
+                        disabled={sending || !newMessage.trim()}
                         className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95 shrink-0"
                       >
                         {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
