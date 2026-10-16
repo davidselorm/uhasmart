@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { categories, campusLocations } from "@/lib/data";
 import { getListingImageUrl } from "@/lib/storage";
 import RegisterBusinessUpgrade from "@/components/RegisterBusinessUpgrade";
+import SubscriptionModal from "@/components/SubscriptionModal";
+import { getSubscriptionState, SubscriptionState } from "@/lib/subscriptions";
 import {
   Store,
   PlusCircle,
@@ -20,6 +22,11 @@ import {
   X,
   UploadCloud,
   MapPin,
+  FileText,
+  Images,
+  Zap,
+  Phone,
+  Plus,
 } from "lucide-react";
 
 interface ListingItem {
@@ -28,34 +35,77 @@ interface ListingItem {
   description: string;
   category: string;
   price_ghs: number;
+  price_max_ghs?: number | null;
+  price_type?: "fixed" | "range";
+  listing_type?: "product" | "flyer";
+  gallery_images?: string[] | null;
+  contact_phone?: string | null;
   location: string;
   status: "pending" | "active" | "rejected" | "sold" | "withdrawn";
   created_at: string;
   image_path?: string | null;
 }
 
+interface ProductItemDraft {
+  file: File;
+  previewUrl: string;
+  title: string;
+  priceGhs: string;
+}
+
+interface ProfileState {
+  display_name: string;
+  role: string;
+  business_name: string | null;
+  phone_number?: string | null;
+  campus_location?: string | null;
+  subscription_status?: string | null;
+  subscription_expires_at?: string | null;
+  trial_ends_at?: string | null;
+  created_at?: string;
+}
+
 export default function SellerDashboard() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
-  const [profile, setProfile] = useState<{ display_name: string; role: string; business_name: string | null } | null>(null);
+  const [profile, setProfile] = useState<ProfileState | null>(null);
   const [listings, setListings] = useState<ListingItem[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Create form state
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("food");
-  const [priceGhs, setPriceGhs] = useState("");
-  const [location, setLocation] = useState(campusLocations[0].name);
+  // TWO POSTING OPTIONS: "products" (multiple uploads) vs "flyer" (promo flyer)
+  const [postingOption, setPostingOption] = useState<"products" | "flyer">("products");
 
-  // Image upload state (Compulsory)
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // SHARED FIELDS
+  const [category, setCategory] = useState("food");
+  const [location, setLocation] = useState(campusLocations[0].name);
+  const [description, setDescription] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+
+  // OPTION 1: UPLOAD PRODUCTS (Up to 20 pictures)
+  const [productDrafts, setProductDrafts] = useState<ProductItemDraft[]>([]);
+  const [pricingMode, setPricingMode] = useState<"uniform" | "individual">("uniform");
+  const [uniformTitle, setUniformTitle] = useState("");
+  const [uniformPriceGhs, setUniformPriceGhs] = useState("");
+  const [priceType, setPriceType] = useState<"fixed" | "range">("fixed");
+  const [priceMaxGhs, setPriceMaxGhs] = useState("");
+  const [multiPhotoPostMode, setMultiPhotoPostMode] = useState<"separate_products" | "single_gallery">("separate_products");
+
+  // OPTION 2: POST A FLYER (Single Promotional Banner)
+  const [flyerTitle, setFlyerTitle] = useState("");
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreview, setFlyerPreview] = useState<string | null>(null);
+  const [flyerPriceType, setFlyerPriceType] = useState<"fixed" | "range">("fixed");
+  const [flyerPriceGhs, setFlyerPriceGhs] = useState("");
+  const [flyerPriceMaxGhs, setFlyerPriceMaxGhs] = useState("");
+
+  // Calculate Subscription & Trial State
+  const subscriptionState: SubscriptionState = getSubscriptionState(profile);
 
   const loadSellerData = useCallback(async () => {
     if (!supabase) {
@@ -73,12 +123,24 @@ export default function SellerDashboard() {
       setUser(authData.user);
 
       const [profRes, listRes] = await Promise.all([
-        supabase.from("profiles").select("display_name,role,business_name").eq("id", authData.user.id).maybeSingle(),
-        supabase.from("listings").select("*").eq("seller_id", authData.user.id).order("created_at", { ascending: false }),
+        supabase
+          .from("profiles")
+          .select("display_name,role,business_name,phone_number,campus_location,subscription_status,subscription_expires_at,trial_ends_at,created_at")
+          .eq("id", authData.user.id)
+          .maybeSingle(),
+        supabase
+          .from("listings")
+          .select("*")
+          .eq("seller_id", authData.user.id)
+          .order("created_at", { ascending: false }),
       ]);
 
       if (profRes.data) {
-        setProfile(profRes.data as { display_name: string; role: string; business_name: string | null });
+        const prof = profRes.data as ProfileState;
+        setProfile(prof);
+        if (prof.phone_number) {
+          setContactPhone(prof.phone_number);
+        }
       }
       if (listRes.data) {
         setListings(listRes.data as ListingItem[]);
@@ -94,7 +156,46 @@ export default function SellerDashboard() {
     void loadSellerData();
   }, [loadSellerData]);
 
-  function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+  // Multiple Image Selection (up to 20 pictures at once)
+  function handleMultipleImagesChange(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const remainingSlots = 20 - productDrafts.length;
+    if (remainingSlots <= 0) {
+      setError("You have reached the maximum limit of 20 product pictures.");
+      return;
+    }
+
+    const filesToAdd = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      setError(`Only ${remainingSlots} more photo(s) could be added to stay within the 20-photo limit.`);
+    } else {
+      setError("");
+    }
+
+    const newDrafts: ProductItemDraft[] = filesToAdd.map((file, idx) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      title: uniformTitle ? `${uniformTitle} #${productDrafts.length + idx + 1}` : `Item #${productDrafts.length + idx + 1}`,
+      priceGhs: uniformPriceGhs || "",
+    }));
+
+    setProductDrafts((prev) => [...prev, ...newDrafts]);
+  }
+
+  function handleRemoveProductDraft(index: number) {
+    setProductDrafts((prev) => {
+      const removed = prev[index];
+      if (removed?.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  // Flyer Image Selection (1 flyer)
+  function handleFlyerChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -103,25 +204,25 @@ export default function SellerDashboard() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image size exceeds 5MB. Please choose a smaller photo.");
+    if (file.size > 8 * 1024 * 1024) {
+      setError("Flyer image exceeds 8MB. Please choose a smaller file.");
       return;
     }
 
     setError("");
-    setImageFile(file);
-    const previewUrl = URL.createObjectURL(file);
-    setImagePreview(previewUrl);
+    setFlyerFile(file);
+    setFlyerPreview(URL.createObjectURL(file));
   }
 
-  function handleRemoveImage() {
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview);
+  function handleRemoveFlyer() {
+    if (flyerPreview) {
+      URL.revokeObjectURL(flyerPreview);
     }
-    setImageFile(null);
-    setImagePreview(null);
+    setFlyerFile(null);
+    setFlyerPreview(null);
   }
 
+  // Submit Handler for Both Posting Options
   async function handleCreateListing(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !user) return;
@@ -131,78 +232,177 @@ export default function SellerDashboard() {
       return;
     }
 
-    // Compulsory image check
-    if (!imageFile) {
-      setError("A product photo is required. Please upload a clear photo of your item before submitting.");
-      return;
-    }
-
     setSubmitting(true);
     setError("");
     setSuccess("");
 
     try {
-      const price = parseFloat(priceGhs);
-      if (isNaN(price) || price < 0) {
-        throw new Error("Please enter a valid price in Ghana Cedis (GHS).");
+      // -------------------------------------------------------------
+      // SUBMIT FLOW A: POST A PROMOTIONAL FLYER
+      // -------------------------------------------------------------
+      if (postingOption === "flyer") {
+        if (!flyerFile) {
+          throw new Error("Please upload a flyer image before submitting.");
+        }
+
+        const basePrice = parseFloat(flyerPriceGhs) || 0;
+        const maxPrice = flyerPriceType === "range" && flyerPriceMaxGhs ? parseFloat(flyerPriceMaxGhs) : null;
+
+        setUploadProgressText("Uploading promotional flyer image...");
+        const fileExt = flyerFile.name.split(".").pop()?.toLowerCase() || "jpg";
+        const flyerStoragePath = `${user.id}/flyers/${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${fileExt}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("listing-images")
+          .upload(flyerStoragePath, flyerFile, {
+            cacheControl: "3600",
+            upsert: true,
+          });
+
+        if (uploadErr) throw new Error(`Failed to upload flyer: ${uploadErr.message}`);
+
+        setUploadProgressText("Saving flyer listing to marketplace...");
+        const { data: newListing, error: insertErr } = await supabase
+          .from("listings")
+          .insert({
+            seller_id: user.id,
+            title: flyerTitle.trim(),
+            description: description.trim(),
+            category,
+            price_ghs: basePrice,
+            price_max_ghs: maxPrice,
+            price_type: flyerPriceType,
+            listing_type: "flyer",
+            location,
+            contact_phone: contactPhone.trim() || profile.phone_number,
+            image_path: flyerStoragePath,
+            gallery_images: [flyerStoragePath],
+            status: "pending",
+          })
+          .select()
+          .single();
+
+        if (insertErr) throw insertErr;
+
+        setListings((prev) => [newListing as ListingItem, ...prev]);
+        setSuccess("Promotional flyer submitted! It is awaiting quick approval by campus moderators.");
+        setShowCreateModal(false);
+        handleRemoveFlyer();
+        setFlyerTitle("");
+        setDescription("");
+        setFlyerPriceGhs("");
+        setFlyerPriceMaxGhs("");
+        return;
       }
 
-      // Step 1: Create listing record
-      const { data: newListing, error: insertError } = await supabase
-        .from("listings")
-        .insert({
-          seller_id: user.id,
-          title: title.trim(),
-          description: description.trim(),
-          category,
-          price_ghs: price,
-          location,
-          status: "pending",
-        })
-        .select()
-        .single();
+      // -------------------------------------------------------------
+      // SUBMIT FLOW B: UPLOAD PRODUCTS (Up to 20 Pictures)
+      // -------------------------------------------------------------
+      if (productDrafts.length === 0) {
+        throw new Error("Please upload at least 1 product picture (up to 20 allowed).");
+      }
 
-      if (insertError) throw insertError;
+      // Step 1: Upload all product photos in parallel/batches
+      const uploadedPaths: string[] = [];
+      for (let i = 0; i < productDrafts.length; i++) {
+        setUploadProgressText(`Uploading product photo ${i + 1} of ${productDrafts.length}...`);
+        const draft = productDrafts[i];
+        const fileExt = draft.file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const storagePath = `${user.id}/products/${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}.${fileExt}`;
 
-      // Step 2: Upload compulsory image
-      setUploadingImage(true);
-      const fileExt = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
-      const filePath = `${user.id}/${newListing.id}/${Date.now()}.${fileExt}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("listing-images")
+          .upload(storagePath, draft.file, {
+            cacheControl: "3600",
+            upsert: true,
+          });
 
-      const { error: uploadError } = await supabase.storage
-        .from("listing-images")
-        .upload(filePath, imageFile, {
-          cacheControl: "3600",
-          upsert: true,
+        if (uploadErr) throw new Error(`Failed to upload photo #${i + 1}: ${uploadErr.message}`);
+        uploadedPaths.push(storagePath);
+      }
+
+      setUploadProgressText("Saving products to marketplace...");
+
+      // Case B1: Post as a single product with a multi-photo gallery
+      if (multiPhotoPostMode === "single_gallery" || productDrafts.length === 1) {
+        const basePrice = parseFloat(uniformPriceGhs || productDrafts[0].priceGhs);
+        if (isNaN(basePrice) || basePrice < 0) {
+          throw new Error("Please enter a valid price in Ghana Cedis.");
+        }
+        const maxPrice = priceType === "range" && priceMaxGhs ? parseFloat(priceMaxGhs) : null;
+
+        const { data: newListing, error: insertErr } = await supabase
+          .from("listings")
+          .insert({
+            seller_id: user.id,
+            title: (uniformTitle || productDrafts[0].title).trim(),
+            description: description.trim(),
+            category,
+            price_ghs: basePrice,
+            price_max_ghs: maxPrice,
+            price_type: priceType,
+            listing_type: "product",
+            location,
+            contact_phone: contactPhone.trim() || profile.phone_number,
+            image_path: uploadedPaths[0],
+            gallery_images: uploadedPaths,
+            status: "pending",
+          })
+          .select()
+          .single();
+
+        if (insertErr) throw insertErr;
+        setListings((prev) => [newListing as ListingItem, ...prev]);
+        setSuccess(`Product with ${uploadedPaths.length} photo(s) submitted successfully for review!`);
+      } else {
+        // Case B2: Post as multiple individual products in one batch!
+        const rowsToInsert = productDrafts.map((draft, idx) => {
+          const itemPrice = pricingMode === "individual" ? parseFloat(draft.priceGhs) : parseFloat(uniformPriceGhs);
+          const maxPrice = priceType === "range" && priceMaxGhs ? parseFloat(priceMaxGhs) : null;
+          const itemTitle = pricingMode === "individual" ? draft.title : `${uniformTitle || "Item"} #${idx + 1}`;
+
+          return {
+            seller_id: user.id,
+            title: itemTitle.trim(),
+            description: description.trim(),
+            category,
+            price_ghs: isNaN(itemPrice) ? 0 : itemPrice,
+            price_max_ghs: maxPrice,
+            price_type: priceType,
+            listing_type: "product",
+            location,
+            contact_phone: contactPhone.trim() || profile.phone_number,
+            image_path: uploadedPaths[idx],
+            gallery_images: uploadedPaths, // each item retains the batch gallery
+            status: "pending",
+          };
         });
 
-      if (uploadError) {
-        throw new Error(`Failed to upload product image: ${uploadError.message}`);
+        const { data: insertedRows, error: batchErr } = await supabase
+          .from("listings")
+          .insert(rowsToInsert)
+          .select();
+
+        if (batchErr) throw batchErr;
+        if (insertedRows) {
+          setListings((prev) => [...(insertedRows as ListingItem[]), ...prev]);
+        }
+        setSuccess(`Batch upload complete! Successfully listed ${rowsToInsert.length} products for review.`);
       }
 
-      // Update listing with image_path
-      await supabase
-        .from("listings")
-        .update({ image_path: filePath })
-        .eq("id", newListing.id);
-
-      const completeListing: ListingItem = {
-        ...newListing,
-        image_path: filePath,
-      };
-
-      setListings((prev) => [completeListing, ...prev]);
-      setSuccess("Your listing was submitted successfully with photo and is awaiting quick approval by campus moderators!");
-      setShowCreateModal(false);
-      setTitle("");
+      // Cleanup
+      productDrafts.forEach((d) => URL.revokeObjectURL(d.previewUrl));
+      setProductDrafts([]);
+      setUniformTitle("");
+      setUniformPriceGhs("");
+      setPriceMaxGhs("");
       setDescription("");
-      setPriceGhs("");
-      handleRemoveImage();
+      setShowCreateModal(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create listing.");
     } finally {
       setSubmitting(false);
-      setUploadingImage(false);
+      setUploadProgressText("");
     }
   }
 
@@ -287,27 +487,105 @@ export default function SellerDashboard() {
 
   return (
     <div className="w-full max-w-5xl space-y-6 px-1 sm:px-0">
-      {/* Top Banner (Frosted Glass) */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-3xl glass-card p-6 shadow-sm">
+      {/* 1. SELLER SUBSCRIPTION & TRIAL STATUS BANNER */}
+      <div
+        className={`rounded-3xl p-5 sm:p-6 border shadow-sm transition-all ${
+          subscriptionState.isExpired
+            ? "bg-rose-50/90 border-rose-200"
+            : subscriptionState.daysRemaining <= 5
+            ? "bg-amber-50/90 border-amber-200"
+            : "glass-card border-blue-100"
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <span
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-sm shrink-0 ${
+                subscriptionState.isExpired
+                  ? "bg-rose-600"
+                  : subscriptionState.daysRemaining <= 5
+                  ? "bg-amber-600"
+                  : "bg-blue-600"
+              }`}
+            >
+              <Zap className="h-6 w-6" />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                    subscriptionState.isExpired
+                      ? "bg-rose-100 text-rose-800"
+                      : subscriptionState.daysRemaining <= 5
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-emerald-100 text-emerald-800"
+                  }`}
+                >
+                  {subscriptionState.isExpired
+                    ? "Subscription Expired"
+                    : subscriptionState.isTrial
+                    ? "30-Day Free Trial"
+                    : "Active Subscription"}
+                </span>
+                <span className="text-xs font-bold text-gray-500">
+                  {subscriptionState.isExpired
+                    ? "Products currently hidden from buyers"
+                    : `${subscriptionState.daysRemaining} days remaining (Expires ${subscriptionState.formattedExpiry})`}
+                </span>
+              </div>
+
+              <h2 className="mt-1 text-base sm:text-lg font-black text-gray-900">
+                {subscriptionState.isExpired
+                  ? "Reactivate Your Listings with Mobile Money"
+                  : subscriptionState.isTrial
+                  ? `Enjoying UHASMART? ${subscriptionState.daysRemaining} days left in your free trial`
+                  : "Your Student Business is Fully Verified and Active"}
+              </h2>
+
+              <p className="mt-0.5 text-xs text-gray-600 max-w-xl leading-relaxed">
+                {subscriptionState.isExpired
+                  ? "Your products are saved safely, but buyers cannot view or purchase them until subscription is renewed."
+                  : "Automatic reminders keep your listings live. Renew anytime using MTN MoMo, Telecel Cash, or AT Money."}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowSubscriptionModal(true)}
+            className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-xs font-black text-white shadow-md active:scale-95 transition-all shrink-0 ${
+              subscriptionState.isExpired
+                ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
+                : "bg-blue-600 hover:bg-blue-700 shadow-blue-600/25"
+            }`}
+          >
+            <Zap className="h-4 w-4" />
+            <span>{subscriptionState.isExpired ? "Renew with Mobile Money" : "Renew / Extend Plan"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. TOP PORTAL BANNER */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-3xl glass-card p-5 sm:p-6 shadow-sm">
         <div>
           <span className="rounded-full bg-purple-100 px-3 py-1 text-[11px] font-bold text-purple-800">
-            Student Seller Portal
+            Student Seller Portal &bull; Ho, Volta Region
           </span>
-          <h1 className="mt-2 text-2xl font-extrabold text-gray-900 sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-black text-gray-900 sm:text-3xl">
             {profile?.business_name || profile?.display_name || "Campus Business Hub"}
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Manage your items, check review status, and reach students across UHAS Ho.
+            Upload multiple products at once (up to 20), post promotional flyers, and manage inventory.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setShowCreateModal(true)}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 transition-all active:scale-95"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-xs font-black text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 transition-all active:scale-95"
         >
           <PlusCircle className="h-4 w-4" />
-          <span>Add New Product</span>
+          <span>Post Flyer or Products</span>
         </button>
       </div>
 
@@ -325,13 +603,13 @@ export default function SellerDashboard() {
         </div>
       )}
 
-      {/* Stats Cards (Mobile responsive grid) */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
         <div className="rounded-3xl glass-card p-5 shadow-sm">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
             <Package className="h-5 w-5" />
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-gray-900">{activeCount}</p>
+          <p className="mt-3 text-2xl font-black text-gray-900">{activeCount}</p>
           <p className="text-xs font-semibold text-gray-500">Live Active Items</p>
         </div>
 
@@ -339,7 +617,7 @@ export default function SellerDashboard() {
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
             <Clock className="h-5 w-5" />
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-gray-900">{pendingCount}</p>
+          <p className="mt-3 text-2xl font-black text-gray-900">{pendingCount}</p>
           <p className="text-xs font-semibold text-gray-500">Pending Review</p>
         </div>
 
@@ -347,86 +625,113 @@ export default function SellerDashboard() {
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
             <Tag className="h-5 w-5" />
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-gray-900">{soldCount}</p>
+          <p className="mt-3 text-2xl font-black text-gray-900">{soldCount}</p>
           <p className="text-xs font-semibold text-gray-500">Marked as Sold</p>
         </div>
       </div>
 
       {/* Product Catalog Section */}
       <div className="overflow-hidden rounded-3xl glass-card shadow-sm">
-        <div className="border-b border-gray-100 p-5 sm:p-6">
-          <h2 className="text-lg font-bold text-gray-900">Your Product Catalog</h2>
-          <p className="text-xs text-gray-500">Products are reviewed by campus moderators before going live to students.</p>
+        <div className="border-b border-gray-100 p-5 sm:p-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-gray-900">Your Product Catalog &amp; Flyers</h2>
+            <p className="text-xs text-gray-500">
+              {subscriptionState.isExpired
+                ? "⚠️ Listings are saved but hidden from buyers because your subscription has expired."
+                : "Products and flyers reviewed by campus moderators before going live to students."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add more items</span>
+          </button>
         </div>
 
         {listings.length === 0 ? (
           <div className="p-12 text-center">
             <Package className="mx-auto h-12 w-12 text-gray-300" />
-            <p className="mt-4 text-sm font-semibold text-gray-900">No products listed yet</p>
-            <p className="mt-1 text-xs text-gray-500">Start selling your items by uploading your first product photo.</p>
+            <p className="mt-4 text-sm font-semibold text-gray-900">No products or flyers listed yet</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Start selling by uploading up to 20 product pictures at once or posting a promotional flyer.
+            </p>
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
               className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-bold text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-95"
             >
               <PlusCircle className="h-4 w-4" />
-              <span>Add Your First Product</span>
+              <span>Add Products or Flyer</span>
             </button>
           </div>
         ) : (
           <>
-            {/* MOBILE VIEW: Touch-friendly Card List (Hidden on desktop) */}
+            {/* MOBILE VIEW: Card List */}
             <div className="divide-y divide-gray-100 block md:hidden">
               {listings.map((item) => {
                 const itemImg = getListingImageUrl(item.image_path);
+                const isFlyer = item.listing_type === "flyer";
+                const hasGallery = item.gallery_images && item.gallery_images.length > 1;
+
                 return (
                   <div key={item.id} className="p-4 space-y-3">
                     <div className="flex gap-3">
-                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-slate-100 shadow-sm">
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-slate-100 shadow-sm relative">
                         {itemImg ? (
-                          <img
-                            src={itemImg}
-                            alt={item.title}
-                            className="h-full w-full object-cover"
-                          />
+                          <img src={itemImg} alt={item.title} className="h-full w-full object-cover" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-gray-400">
                             <Package className="h-6 w-6" />
                           </div>
                         )}
+                        {hasGallery && (
+                          <span className="absolute bottom-1 right-1 rounded-md bg-black/60 px-1 text-[8px] font-bold text-white">
+                            {item.gallery_images?.length} imgs
+                          </span>
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
-                            {item.category}
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                            {isFlyer && <FileText className="h-3 w-3 text-purple-600" />}
+                            <span>{item.category}</span>
                           </span>
-                          {item.status === "active" && (
-                            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">
+
+                          {/* Status Badge */}
+                          {subscriptionState.isExpired && item.status === "active" ? (
+                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-bold text-rose-700 border border-rose-200">
+                              Hidden (Expired)
+                            </span>
+                          ) : item.status === "active" ? (
+                            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[9px] font-bold text-green-700">
                               Active
                             </span>
-                          )}
-                          {item.status === "pending" && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                          ) : item.status === "pending" ? (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700">
                               Pending
                             </span>
-                          )}
-                          {item.status === "sold" && (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
+                          ) : item.status === "sold" ? (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold text-gray-600">
                               Sold
                             </span>
-                          )}
-                          {item.status === "rejected" && (
-                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                              Rejected
+                          ) : (
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[9px] font-bold text-red-700">
+                              {item.status}
                             </span>
                           )}
                         </div>
 
                         <h3 className="mt-1 text-sm font-bold text-gray-900 truncate">{item.title}</h3>
-                        <p className="text-xs font-extrabold text-blue-600">
+
+                        <p className="text-xs font-black text-blue-600">
                           GHS {Number(item.price_ghs).toFixed(2)}
+                          {item.price_max_ghs ? ` - GHS ${Number(item.price_max_ghs).toFixed(2)}` : ""}
                         </p>
+
                         <p className="flex items-center gap-1 text-[11px] text-gray-400 mt-1 truncate">
                           <MapPin className="h-3 w-3" />
                           <span>{item.location}</span>
@@ -450,16 +755,15 @@ export default function SellerDashboard() {
                           onClick={() => updateListingStatus(item.id, "active")}
                           className="flex-1 rounded-xl border border-gray-200 bg-white py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 text-center"
                         >
-                          Relist Item
+                          Relist
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={() => handleDeleteListing(item.id)}
-                        className="rounded-xl border border-red-200 bg-red-50/50 p-2 text-red-600 hover:bg-red-100"
-                        title="Delete Listing"
+                        className="rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 text-center"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        Delete
                       </button>
                     </div>
                   </div>
@@ -467,72 +771,82 @@ export default function SellerDashboard() {
               })}
             </div>
 
-            {/* DESKTOP VIEW: Data Table (Hidden on mobile) */}
+            {/* DESKTOP TABLE VIEW */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-gray-50/70 text-gray-600">
+              <table className="w-full text-left text-xs text-gray-600">
+                <thead className="bg-slate-50/70 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                   <tr>
-                    <th className="p-4 font-bold">Product</th>
-                    <th className="p-4 font-bold">Category</th>
-                    <th className="p-4 font-bold">Price</th>
-                    <th className="p-4 font-bold">Location</th>
-                    <th className="p-4 font-bold">Status</th>
-                    <th className="p-4 font-bold text-right">Actions</th>
+                    <th className="p-4">Item &amp; Type</th>
+                    <th className="p-4">Category</th>
+                    <th className="p-4">Price (GHS)</th>
+                    <th className="p-4">Ho Location</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {listings.map((item) => {
                     const itemImg = getListingImageUrl(item.image_path);
+                    const isFlyer = item.listing_type === "flyer";
+                    const hasGallery = item.gallery_images && item.gallery_images.length > 1;
+
                     return (
-                      <tr key={item.id} className="hover:bg-gray-50/50">
+                      <tr key={item.id} className="hover:bg-slate-50/40 transition-colors">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-slate-100 shadow-sm">
+                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-slate-100 relative">
                               {itemImg ? (
-                                <img
-                                  src={itemImg}
-                                  alt={item.title}
-                                  className="h-full w-full object-cover"
-                                />
+                                <img src={itemImg} alt={item.title} className="h-full w-full object-cover" />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-gray-400">
                                   <Package className="h-5 w-5" />
                                 </div>
                               )}
+                              {hasGallery && (
+                                <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[8px] font-bold text-white">
+                                  {item.gallery_images?.length}
+                                </span>
+                              )}
                             </div>
                             <div>
-                              <p className="font-bold text-gray-900">{item.title}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-gray-900">{item.title}</p>
+                                {isFlyer && (
+                                  <span className="rounded bg-purple-100 text-purple-800 px-1.5 py-0.2 text-[9px] font-bold">
+                                    Flyer
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-gray-400 line-clamp-1">{item.description}</p>
                             </div>
                           </div>
                         </td>
                         <td className="p-4 capitalize text-gray-600">{item.category}</td>
-                        <td className="p-4 font-bold text-blue-600">GHS {Number(item.price_ghs).toFixed(2)}</td>
+                        <td className="p-4 font-bold text-blue-600">
+                          GHS {Number(item.price_ghs).toFixed(2)}
+                          {item.price_max_ghs ? ` - GHS ${Number(item.price_max_ghs).toFixed(2)}` : ""}
+                        </td>
                         <td className="p-4 text-gray-600">{item.location}</td>
                         <td className="p-4">
-                          {item.status === "active" && (
+                          {subscriptionState.isExpired && item.status === "active" ? (
+                            <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 border border-rose-200">
+                              Hidden (Expired)
+                            </span>
+                          ) : item.status === "active" ? (
                             <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
                               Active
                             </span>
-                          )}
-                          {item.status === "pending" && (
+                          ) : item.status === "pending" ? (
                             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
                               Pending Review
                             </span>
-                          )}
-                          {item.status === "sold" && (
+                          ) : item.status === "sold" ? (
                             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
                               Sold
                             </span>
-                          )}
-                          {item.status === "withdrawn" && (
+                          ) : (
                             <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                              Withdrawn
-                            </span>
-                          )}
-                          {item.status === "rejected" && (
-                            <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                              Rejected
+                              {item.status}
                             </span>
                           )}
                         </td>
@@ -576,102 +890,426 @@ export default function SellerDashboard() {
         )}
       </div>
 
-      {/* Add New Product Modal (iPhone Frosted Glass Modal) */}
+      {/* 3. POSTING MODAL: TWO POSTING OPTIONS ("Upload Products" vs "Post a Flyer") */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 backdrop-blur-md">
-          <div className="w-full max-w-lg rounded-t-[2rem] sm:rounded-3xl glass-modal p-6 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-xl rounded-t-[2.5rem] sm:rounded-3xl bg-white shadow-2xl max-h-[94vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
+            {/* iOS Pull Handle on Mobile */}
+            <div className="pt-3 pb-1 flex justify-center sm:hidden">
+              <div className="h-1.5 w-12 rounded-full bg-gray-300" />
+            </div>
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div>
-                <h3 className="text-base font-extrabold text-gray-900">List New Product on Campus</h3>
-                <p className="text-xs text-gray-500">Post items to students across Sokode, Trafalgar &amp; Dave campuses.</p>
+                <h3 className="text-base font-black text-gray-900">Create Campus Listing</h3>
+                <p className="text-xs text-gray-500">Reach thousands of UHAS and Ho students.</p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setShowCreateModal(false);
-                  handleRemoveImage();
-                }}
+                onClick={() => setShowCreateModal(false)}
                 className="rounded-full p-2 text-gray-400 hover:bg-gray-100 active:scale-95"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateListing} className="mt-5 space-y-4">
-              <div>
-                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Product / Service Title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. White Nike Air Force (Size 42)"
-                  className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
-                />
-              </div>
+            {/* TWO POSTING TABS */}
+            <div className="grid grid-cols-2 p-2 bg-slate-100/70 border-b border-gray-100">
+              <button
+                type="button"
+                onClick={() => setPostingOption("products")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                  postingOption === "products"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <Images className="h-4 w-4" />
+                <span>Upload Products (Up to 20)</span>
+              </button>
 
-              {/* Photo Upload Area (COMPULSORY) */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Product Photo <span className="text-red-500">*</span>
-                  </label>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                    Required
-                  </span>
-                </div>
+              <button
+                type="button"
+                onClick={() => setPostingOption("flyer")}
+                className={`flex items-center justify-center gap-2 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                  postingOption === "flyer"
+                    ? "bg-white text-purple-600 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                <span>Post a Flyer</span>
+              </button>
+            </div>
 
-                {imagePreview ? (
-                  <div className="relative mt-1 flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-3">
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                      <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
+            {/* FORM CONTAINER */}
+            <form onSubmit={handleCreateListing} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {/* -------------------------------------------------------- */}
+              {/* TAB 1: UPLOAD PRODUCTS (UP TO 20 PICTURES) */}
+              {/* -------------------------------------------------------- */}
+              {postingOption === "products" && (
+                <div className="space-y-4">
+                  {/* Photo Upload Area */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-gray-700">
+                        Product Pictures ({productDrafts.length} / 20 selected) <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                        Up to 20 photos at once
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold text-gray-800">{imageFile?.name}</p>
-                      <p className="text-[11px] text-gray-500">
-                        {imageFile ? (imageFile.size / 1024 / 1024).toFixed(2) : 0} MB &bull; Photo ready
-                      </p>
+
+                    {/* Thumbnail Grid */}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                      {productDrafts.map((draft, idx) => (
+                        <div
+                          key={idx}
+                          className="relative aspect-square rounded-2xl overflow-hidden border border-gray-200 bg-slate-100 group shadow-sm"
+                        >
+                          <img src={draft.previewUrl} alt={`Draft ${idx}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProductDraft(idx)}
+                            className="absolute top-1.5 right-1.5 rounded-full bg-black/70 p-1 text-white hover:bg-red-600 transition-colors shadow-sm"
+                            title="Remove picture"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="absolute bottom-1 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                      ))}
+
+                      {/* Add more button if < 20 */}
+                      {productDrafts.length < 20 && (
+                        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-slate-50/70 p-2 text-center hover:border-blue-500 hover:bg-blue-50/30 transition-all active:scale-95">
+                          <UploadCloud className="h-6 w-6 text-gray-400 group-hover:text-blue-600" />
+                          <span className="mt-1 text-[10px] font-bold text-gray-700">Add Photos</span>
+                          <span className="text-[9px] text-gray-400">Select up to 20</span>
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={handleMultipleImagesChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveImage}
-                      className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                      title="Remove image"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
-                ) : (
-                  <label
-                    className={`mt-1 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 transition-all ${
-                      error && !imageFile
-                        ? "border-red-400 bg-red-50/40"
-                        : "border-gray-200 bg-white/70 hover:border-blue-400 hover:bg-blue-50/40"
-                    }`}
-                  >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 shadow-sm">
-                      <UploadCloud className="h-6 w-6" />
-                    </div>
-                    <span className="mt-2 text-xs font-bold text-gray-900">
-                      Tap to upload product photo
-                    </span>
-                    <span className="text-[11px] text-gray-500 mt-0.5">JPG, PNG, or WEBP up to 5MB</span>
-                    <span className="mt-2 text-[10px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
-                      Every listing must have a photo
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={handleImageChange}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
+                  {/* Multi-Photo Packaging Strategy (If multiple photos selected) */}
+                  {productDrafts.length > 1 && (
+                    <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3.5 space-y-2">
+                      <label className="block text-xs font-bold text-gray-800">
+                        How should these {productDrafts.length} pictures be published?
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setMultiPhotoPostMode("separate_products")}
+                          className={`rounded-xl p-2.5 border text-left transition-all ${
+                            multiPhotoPostMode === "separate_products"
+                              ? "border-blue-600 bg-white font-bold text-blue-700 shadow-sm"
+                              : "border-gray-200 bg-white/70 text-gray-600"
+                          }`}
+                        >
+                          📦 Separate Products
+                          <p className="text-[10px] font-normal text-gray-400 mt-0.5">
+                            Each photo becomes a separate marketplace card
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMultiPhotoPostMode("single_gallery")}
+                          className={`rounded-xl p-2.5 border text-left transition-all ${
+                            multiPhotoPostMode === "single_gallery"
+                              ? "border-blue-600 bg-white font-bold text-blue-700 shadow-sm"
+                              : "border-gray-200 bg-white/70 text-gray-600"
+                          }`}
+                        >
+                          🖼️ 1 Product Gallery
+                          <p className="text-[10px] font-normal text-gray-400 mt-0.5">
+                            1 listing with a swipeable photo gallery
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pricing Mode Toggle (Single price vs Individual prices) */}
+                  {multiPhotoPostMode === "separate_products" && productDrafts.length > 1 && (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-800">Pricing Mode</label>
+                        <span className="text-[10px] text-gray-400">Fixed or individual prices</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setPricingMode("uniform")}
+                          className={`rounded-xl p-2 border text-center transition-all ${
+                            pricingMode === "uniform"
+                              ? "border-blue-600 bg-blue-50 font-bold text-blue-700"
+                              : "border-gray-200 text-gray-600"
+                          }`}
+                        >
+                          Same Price for All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPricingMode("individual")}
+                          className={`rounded-xl p-2 border text-center transition-all ${
+                            pricingMode === "individual"
+                              ? "border-blue-600 bg-blue-50 font-bold text-blue-700"
+                              : "border-gray-200 text-gray-600"
+                          }`}
+                        >
+                          Individual Prices per Item
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Title & Price Inputs (Uniform Mode) */}
+                  {pricingMode === "uniform" ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                          {multiPhotoPostMode === "single_gallery" || productDrafts.length === 1
+                            ? "Product Title"
+                            : "Collection / Batch Title"}{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={uniformTitle}
+                          onChange={(e) => setUniformTitle(e.target.value)}
+                          placeholder="e.g. Nike Air Max (Thrift Collection) or Medical Scrubs"
+                          className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                            Price (GHS) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            required
+                            value={uniformPriceGhs}
+                            onChange={(e) => setUniformPriceGhs(e.target.value)}
+                            placeholder="e.g. 120"
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                            Price Type
+                          </label>
+                          <select
+                            value={priceType}
+                            onChange={(e) => setPriceType(e.target.value as "fixed" | "range")}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                          >
+                            <option value="fixed">Fixed Price</option>
+                            <option value="range">Price Range (Min - Max)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {priceType === "range" && (
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                            Maximum Price (GHS)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={priceMaxGhs}
+                            onChange={(e) => setPriceMaxGhs(e.target.value)}
+                            placeholder="e.g. 250"
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Individual Prices per Product List */
+                    <div className="space-y-3">
+                      <label className="block text-xs font-black uppercase tracking-wider text-gray-700">
+                        Set Title &amp; Price for Each Photo
+                      </label>
+                      <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                        {productDrafts.map((draft, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-slate-50/60 p-2.5"
+                          >
+                            <img
+                              src={draft.previewUrl}
+                              alt={`Draft ${idx}`}
+                              className="h-12 w-12 rounded-xl object-cover shrink-0 border border-gray-200"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <input
+                                type="text"
+                                required
+                                value={draft.title}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setProductDrafts((prev) =>
+                                    prev.map((d, i) => (i === idx ? { ...d, title: val } : d))
+                                  );
+                                }}
+                                placeholder={`Item #${idx + 1} Name`}
+                                className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+                              />
+                            </div>
+                            <div className="w-24 shrink-0">
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                required
+                                value={draft.priceGhs}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setProductDrafts((prev) =>
+                                    prev.map((d, i) => (i === idx ? { ...d, priceGhs: val } : d))
+                                  );
+                                }}
+                                placeholder="GHS"
+                                className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 font-bold focus:border-blue-600 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* -------------------------------------------------------- */}
+              {/* TAB 2: POST A PROMOTIONAL FLYER */}
+              {/* -------------------------------------------------------- */}
+              {postingOption === "flyer" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-black uppercase tracking-wider text-gray-700">
+                      Flyer Headline / Business Service <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={flyerTitle}
+                      onChange={(e) => setFlyerTitle(e.target.value)}
+                      placeholder="e.g. Mawuko Hostel Vacancies &amp; Pricing 2026/2027"
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Flyer Image Upload */}
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-gray-700 mb-1">
+                      Promotional Flyer Poster <span className="text-red-500">*</span>
+                    </label>
+                    {flyerPreview ? (
+                      <div className="relative rounded-2xl overflow-hidden border border-purple-200 bg-purple-50/30 p-3 flex items-center gap-3">
+                        <img src={flyerPreview} alt="Flyer preview" className="h-20 w-20 rounded-xl object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-800 truncate">{flyerFile?.name}</p>
+                          <p className="text-[11px] text-gray-500">
+                            {flyerFile ? (flyerFile.size / 1024 / 1024).toFixed(2) : 0} MB &bull; High-res flyer
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveFlyer}
+                          className="rounded-xl p-2 text-gray-400 hover:text-red-600"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-purple-300 bg-purple-50/20 p-6 text-center cursor-pointer hover:bg-purple-50/40 transition-all">
+                        <FileText className="h-8 w-8 text-purple-600" />
+                        <span className="mt-2 text-xs font-bold text-gray-900">Tap to upload promotional flyer</span>
+                        <span className="text-[11px] text-gray-500">Poster, price list, hostel banner (PNG, JPG)</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleFlyerChange}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Flyer Price or Range */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                        Price Type
+                      </label>
+                      <select
+                        value={flyerPriceType}
+                        onChange={(e) => setFlyerPriceType(e.target.value as "fixed" | "range")}
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                      >
+                        <option value="fixed">Fixed Price</option>
+                        <option value="range">Price Range (From - To)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                        {flyerPriceType === "range" ? "Starting Price (GHS)" : "Service Price (GHS)"}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={flyerPriceGhs}
+                        onChange={(e) => setFlyerPriceGhs(e.target.value)}
+                        placeholder="e.g. 150"
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {flyerPriceType === "range" && (
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
+                        Maximum Price (GHS)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={flyerPriceMaxGhs}
+                        onChange={(e) => setFlyerPriceMaxGhs(e.target.value)}
+                        placeholder="e.g. 500"
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SHARED FIELDS: Category & Location & Description & Contact */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
                     Category <span className="text-red-500">*</span>
@@ -679,7 +1317,7 @@ export default function SellerDashboard() {
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-white/80 px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -691,79 +1329,100 @@ export default function SellerDashboard() {
 
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Price (GHS) <span className="text-red-500">*</span>
+                    Location in Ho <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    required
-                    value={priceGhs}
-                    onChange={(e) => setPriceGhs(e.target.value)}
-                    placeholder="e.g. 150"
-                    className="w-full rounded-2xl border border-gray-200 bg-white/80 px-4 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
-                  />
+                  <select
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                  >
+                    {campusLocations.map((loc) => (
+                      <option key={loc.id} value={loc.name}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Pickup / Service Location in Ho <span className="text-red-500">*</span>
+                  Seller WhatsApp / Phone Number <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full rounded-2xl border border-gray-200 bg-white/80 px-3 py-3 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
-                >
-                  {campusLocations.map((loc) => (
-                    <option key={loc.id} value={loc.name}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-400" />
+                  <input
+                    type="tel"
+                    required
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="e.g. 0241234567"
+                    className="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-gray-400">Buyers will contact you directly on WhatsApp at this number.</p>
               </div>
 
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Description <span className="text-red-500">*</span>
+                  Description / Service Details <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   required
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe condition, size, ingredients, or meetup instructions (min 10 characters)..."
-                  className="w-full rounded-2xl border border-gray-200 bg-white/80 p-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
+                  placeholder="Describe condition, sizes, menu, hostel amenities, or meetup spots in Ho (min 10 characters)..."
+                  className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-xs text-gray-900 focus:border-blue-600 focus:outline-none"
                 />
               </div>
 
-              <div className="flex gap-2 pt-2">
+              {/* Progress Bar during upload */}
+              {uploadProgressText && (
+                <div className="rounded-2xl bg-blue-50 p-3.5 border border-blue-200 flex items-center gap-2.5 text-xs text-blue-700 font-bold">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span>{uploadProgressText}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-3 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    handleRemoveImage();
-                  }}
-                  className="flex-1 rounded-2xl border border-gray-200 bg-white py-3 text-xs font-bold text-gray-700 hover:bg-gray-50 active:scale-95"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 rounded-2xl border border-gray-200 bg-white py-3.5 text-xs font-bold text-gray-700 hover:bg-gray-50 active:scale-95"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 rounded-2xl bg-blue-600 py-3 text-xs font-bold text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95"
+                  className="flex-1 rounded-2xl bg-blue-600 py-3.5 text-xs font-black text-white shadow-md shadow-blue-500/25 hover:bg-blue-700 disabled:opacity-50 active:scale-95 transition-all"
                 >
                   {submitting
-                    ? uploadingImage
-                      ? "Uploading photo..."
-                      : "Submitting..."
-                    : "Submit Listing"}
+                    ? "Processing Upload..."
+                    : postingOption === "flyer"
+                    ? "Publish Flyer"
+                    : `Publish ${productDrafts.length || 1} Product(s)`}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* 4. SUBSCRIPTION & PAYMENT MODAL */}
+      <SubscriptionModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        userId={user.id}
+        defaultPhone={profile?.phone_number}
+        subscriptionState={subscriptionState}
+        onSuccess={() => {
+          setLoading(true);
+          void loadSellerData();
+        }}
+      />
     </div>
   );
 }

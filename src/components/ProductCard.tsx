@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Phone, MessageSquare, Store } from "lucide-react";
+import { MapPin, Phone, MessageSquare, Store, Images, FileText } from "lucide-react";
 import { categories, getCategoryIcon } from "@/lib/data";
 import { getListingImageUrl } from "@/lib/storage";
 import { createWhatsAppUrl } from "@/lib/whatsapp";
@@ -13,14 +13,22 @@ export interface ProductItem {
   description: string;
   category: string;
   price_ghs: number;
+  price_max_ghs?: number | null;
+  price_type?: "fixed" | "range";
+  listing_type?: "product" | "flyer";
+  gallery_images?: string[] | null;
   location: string;
   seller_id?: string;
   image_path?: string | null;
+  contact_phone?: string | null;
+  created_at?: string;
   profiles?: {
     display_name: string;
     business_name?: string | null;
     phone_number?: string | null;
     campus_location?: string | null;
+    subscription_status?: string | null;
+    subscription_expires_at?: string | null;
   } | null;
 }
 
@@ -33,16 +41,25 @@ export default function ProductCard({ product, onInquire }: ProductCardProps) {
   const categoryObj = categories.find((c) => c.id === product.category);
   const CategoryIcon = getCategoryIcon(product.category);
   const sellerName = product.profiles?.business_name || product.profiles?.display_name || "Vendor";
-  const sellerPhone = product.profiles?.phone_number;
+  const sellerPhone = product.contact_phone || product.profiles?.phone_number;
   const imageUrl = getListingImageUrl(product.image_path);
   const [imageError, setImageError] = useState(false);
 
-  const whatsAppUrl = createWhatsAppUrl(
-    sellerPhone,
-    `Hello ${sellerName}, I saw your listing "${product.title}" (GHS ${Number(product.price_ghs).toFixed(
-      2
-    )}) on UHASMART. Is it still available?`
-  );
+  const isFlyer = product.listing_type === "flyer";
+  const hasGallery = product.gallery_images && product.gallery_images.length > 1;
+  const galleryCount = product.gallery_images ? product.gallery_images.length : 1;
+
+  // Format price display (single vs range)
+  const isRange = product.price_type === "range" || (product.price_max_ghs && product.price_max_ghs > product.price_ghs);
+  const priceDisplay = isRange
+    ? `${Number(product.price_ghs).toFixed(0)} - ${Number(product.price_max_ghs).toFixed(0)}`
+    : Number(product.price_ghs).toFixed(2);
+
+  const whatsAppMessage = isFlyer
+    ? `Hello ${sellerName}, I saw your promotional flyer "${product.title}" on UHASMART. I would like to find out more details!`
+    : `Hello ${sellerName}, I saw your product "${product.title}" (GHS ${priceDisplay}) on UHASMART. Is it still available?`;
+
+  const whatsAppUrl = createWhatsAppUrl(sellerPhone, whatsAppMessage);
 
   return (
     <div className="group relative flex flex-col justify-between overflow-hidden rounded-2xl sm:rounded-3xl border border-gray-100/90 bg-white p-2.5 sm:p-4 shadow-sm transition-all hover:border-blue-200 hover:shadow-md active:scale-[0.99]">
@@ -78,26 +95,44 @@ export default function ProductCard({ product, onInquire }: ProductCardProps) {
           )}
 
           {/* Floating Category Pill */}
-          <div className="absolute top-2 left-2 z-10">
+          <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
             <span className="glass-pill inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-gray-800 shadow-sm backdrop-blur-md">
               <CategoryIcon className="h-3 w-3 text-blue-600 shrink-0" />
-              <span className="truncate max-w-[80px] sm:max-w-[110px]">
+              <span className="truncate max-w-[75px] sm:max-w-[105px]">
                 {categoryObj?.name ?? product.category}
               </span>
             </span>
+
+            {/* Flyer Badge */}
+            {isFlyer && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm backdrop-blur-md">
+                <FileText className="h-2.5 w-2.5" />
+                <span>Flyer</span>
+              </span>
+            )}
           </div>
 
-          {/* Floating WhatsApp indicator if seller has WhatsApp */}
-          {whatsAppUrl && (
-            <div className="absolute top-2 right-2 z-10">
+          {/* Floating Gallery Indicator & WhatsApp Badges */}
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+            {hasGallery && (
+              <span
+                title={`${galleryCount} photos available`}
+                className="flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-md shadow-sm"
+              >
+                <Images className="h-2.5 w-2.5" />
+                <span>{galleryCount}</span>
+              </span>
+            )}
+
+            {whatsAppUrl && (
               <span
                 title="Direct WhatsApp Available"
                 className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-white/80"
               >
                 <Phone className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
               </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Price & Location */}
@@ -105,7 +140,7 @@ export default function ProductCard({ product, onInquire }: ProductCardProps) {
           <div className="flex items-baseline gap-1">
             <span className="text-[10px] sm:text-xs font-bold text-blue-600">GHS</span>
             <span className="text-sm sm:text-lg font-black text-gray-900 tracking-tight">
-              {Number(product.price_ghs).toFixed(2)}
+              {priceDisplay}
             </span>
           </div>
         </div>

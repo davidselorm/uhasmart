@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useUnreadMessages } from "@/lib/useUnreadMessages";
 import { campusLocations } from "@/lib/data";
 import RegisterBusinessUpgrade from "@/components/RegisterBusinessUpgrade";
+import SubscriptionModal from "@/components/SubscriptionModal";
+import { getSubscriptionState } from "@/lib/subscriptions";
 import {
   ShieldCheck,
   Mail,
@@ -26,6 +28,7 @@ import {
   AlertTriangle,
   Sparkles,
   X,
+  Zap,
 } from "lucide-react";
 
 interface ProfileData {
@@ -34,6 +37,10 @@ interface ProfileData {
   business_name?: string | null;
   phone_number?: string | null;
   campus_location?: string | null;
+  subscription_status?: string | null;
+  subscription_expires_at?: string | null;
+  trial_ends_at?: string | null;
+  created_at?: string;
 }
 
 export default function AccountHub() {
@@ -58,8 +65,9 @@ export default function AccountHub() {
   const [profileSuccess, setProfileSuccess] = useState("");
   const [profileError, setProfileError] = useState("");
 
-  // Business upgrade modal state
+  // Business upgrade & subscription modal states
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -96,7 +104,7 @@ export default function AccountHub() {
         const [profileRes, adminRes, countRes] = await Promise.all([
           supabase
             .from("profiles")
-            .select("display_name,role,business_name,phone_number,campus_location")
+            .select("display_name,role,business_name,phone_number,campus_location,subscription_status,subscription_expires_at,trial_ends_at,created_at")
             .eq("id", authData.user.id)
             .maybeSingle(),
           supabase.rpc("is_admin"),
@@ -346,25 +354,75 @@ export default function AccountHub() {
       {activeTab === "overview" && (
         <div className="mt-6 space-y-3.5">
           {isSeller ? (
-            <Link
-              href="/seller"
-              className="group flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 transition-all hover:bg-emerald-100/60 shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
-                  <Store className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-sm font-bold text-emerald-950">
-                    {businessName || "My Campus Shop"}
-                  </p>
-                  <p className="text-xs text-emerald-700">
-                    {listingCount} listings &bull; Manage campus products
-                  </p>
+            <div className="space-y-3">
+              <Link
+                href="/seller"
+                className="group flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 transition-all hover:bg-emerald-100/60 shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
+                    <Store className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-emerald-950">
+                      {businessName || "My Campus Shop"}
+                    </p>
+                    <p className="text-xs text-emerald-700">
+                      {listingCount} listings &bull; Manage campus products
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-emerald-600 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+                <ArrowRight className="h-4 w-4 text-emerald-600 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+
+              {/* Seller Subscription Box */}
+              {(() => {
+                const subState = getSubscriptionState(profile);
+                return (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-blue-200/80 bg-blue-50/40">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shrink-0">
+                        <Zap className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-gray-900">
+                            {subState.isExpired
+                              ? "Subscription Expired"
+                              : subState.isTrial
+                              ? `30-Day Free Trial (${subState.daysRemaining} days left)`
+                              : `Active Plan (Expires ${subState.formattedExpiry})`}
+                          </p>
+                          <span
+                            className={`rounded-full px-2 py-0.2 text-[9px] font-black uppercase ${
+                              subState.isExpired
+                                ? "bg-rose-100 text-rose-800"
+                                : subState.daysRemaining <= 5
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {subState.isExpired ? "Expired" : "Active"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                          {subState.isExpired
+                            ? "Your listings are hidden from buyers until subscription is renewed."
+                            : "MTN MoMo, Telecel Cash & AT Money automatic billing."}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowSubscriptionModal(true)}
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-blue-700 active:scale-95 transition-all shrink-0"
+                    >
+                      {subState.isExpired ? "Renew with MoMo" : "Manage / Extend Plan"}
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
           ) : (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm">
               <div className="flex items-center gap-3">
@@ -725,6 +783,35 @@ export default function AccountHub() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Subscription Modal */}
+      {user && (
+        <SubscriptionModal
+          isOpen={showSubscriptionModal}
+          onClose={() => setShowSubscriptionModal(false)}
+          userId={user.id}
+          defaultPhone={profile?.phone_number}
+          subscriptionState={getSubscriptionState(profile)}
+          onSuccess={() => {
+            setLoading(true);
+            // reload user profile data
+            const loadAgain = async () => {
+              if (!supabase) return;
+              const { data: authData } = await supabase.auth.getUser();
+              if (authData?.user) {
+                const { data: pData } = await supabase
+                  .from("profiles")
+                  .select("display_name,role,business_name,phone_number,campus_location,subscription_status,subscription_expires_at,trial_ends_at,created_at")
+                  .eq("id", authData.user.id)
+                  .maybeSingle();
+                if (pData) setProfile(pData as ProfileData);
+              }
+              setLoading(false);
+            };
+            void loadAgain();
+          }}
+        />
       )}
     </section>
   );

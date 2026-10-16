@@ -22,6 +22,8 @@ import {
   Store,
   ChevronDown,
   ShieldCheck,
+  Images,
+  FileText,
 } from "lucide-react";
 import { createWhatsAppUrl } from "@/lib/whatsapp";
 
@@ -47,6 +49,7 @@ function MarketplaceInner() {
 
   // Product Details & Inquiry Bottom Sheet
   const [inquireProduct, setInquireProduct] = useState<ProductItem | null>(null);
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
   const [inquiryBody, setInquiryBody] = useState("");
   const [showInAppForm, setShowInAppForm] = useState(false);
   const [sendingInquiry, setSendingInquiry] = useState(false);
@@ -64,7 +67,7 @@ function MarketplaceInner() {
       try {
         const { data, error } = await supabase
           .from("listings")
-          .select("id,title,description,category,price_ghs,location,seller_id,image_path,created_at,profiles(display_name,business_name,phone_number,campus_location)")
+          .select("id,title,description,category,price_ghs,price_max_ghs,price_type,listing_type,gallery_images,contact_phone,location,seller_id,image_path,created_at,profiles(display_name,business_name,phone_number,campus_location,subscription_status,subscription_expires_at,trial_ends_at,created_at)")
           .eq("status", "active")
           .order("created_at", { ascending: false });
 
@@ -81,10 +84,37 @@ function MarketplaceInner() {
     void loadMarketplace();
   }, [supabase]);
 
-  // Filtered & sorted products
+  // Helper: check if seller subscription or 30-day trial is currently valid
+  // (Expired subscriptions are kept saved in database but hidden from buyers)
+  const isSellerActive = (item: ProductItem): boolean => {
+    if (!item.profiles) return true;
+    const prof = item.profiles as {
+      subscription_expires_at?: string | null;
+      trial_ends_at?: string | null;
+      created_at?: string | null;
+    };
+
+    let expiryDate: Date;
+    if (prof.subscription_expires_at) {
+      expiryDate = new Date(prof.subscription_expires_at);
+    } else if (prof.trial_ends_at) {
+      expiryDate = new Date(prof.trial_ends_at);
+    } else if (prof.created_at) {
+      expiryDate = new Date(new Date(prof.created_at).getTime() + 30 * 24 * 60 * 60 * 1000);
+    } else {
+      return true; // default 30-day trial active
+    }
+
+    return expiryDate.getTime() > Date.now();
+  };
+
+  // Filtered & sorted products (excluding expired sellers from buyers)
   const filteredProducts = useMemo(() => {
     return listings
       .filter((item) => {
+        // Hide if seller's subscription has expired
+        if (!isSellerActive(item)) return false;
+
         const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
         const matchesLocation = selectedLocation === "all" || item.location === selectedLocation;
         const matchesSearch =
@@ -155,20 +185,46 @@ function MarketplaceInner() {
   }
 
   // Pre-calculate modal product details
-  const modalSellerName = inquireProduct?.profiles?.business_name || inquireProduct?.profiles?.display_name || "Campus Vendor";
-  const modalSellerPhone = inquireProduct?.profiles?.phone_number;
-  const modalImageUrl = inquireProduct ? getListingImageUrl(inquireProduct.image_path) : null;
+  const modalSellerName =
+    inquireProduct?.profiles?.business_name || inquireProduct?.profiles?.display_name || "Campus Vendor";
+  const modalSellerPhone = inquireProduct?.contact_phone || inquireProduct?.profiles?.phone_number;
+
+  // Gallery array
+  const galleryPhotos = inquireProduct?.gallery_images && inquireProduct.gallery_images.length > 0
+    ? inquireProduct.gallery_images
+    : inquireProduct?.image_path
+    ? [inquireProduct.image_path]
+    : [];
+
+  const activePhotoPath = galleryPhotos[activeGalleryIndex] || inquireProduct?.image_path;
+  const modalImageUrl = activePhotoPath ? getListingImageUrl(activePhotoPath) : null;
   const ModalCategoryIcon = inquireProduct ? getCategoryIcon(inquireProduct.category) : Package;
   const modalCategoryObj = inquireProduct ? categories.find((c) => c.id === inquireProduct.category) : null;
 
-  const modalWhatsAppUrl = inquireProduct
-    ? createWhatsAppUrl(
-        modalSellerPhone,
-        `Hello ${modalSellerName}, I saw your listing "${inquireProduct.title}" (GHS ${Number(inquireProduct.price_ghs).toFixed(
-          2
-        )}) on UHASMART. Is it still available?`
-      )
-    : null;
+  const isFlyer = inquireProduct?.listing_type === "flyer";
+  const isRange =
+    inquireProduct?.price_type === "range" ||
+    (inquireProduct?.price_max_ghs && inquireProduct.price_max_ghs > inquireProduct.price_ghs);
+
+  const priceDisplay = inquireProduct
+    ? isRange
+      ? `${Number(inquireProduct.price_ghs).toFixed(0)} - ${Number(inquireProduct.price_max_ghs).toFixed(0)}`
+      : Number(inquireProduct.price_ghs).toFixed(2)
+    : "0.00";
+
+  const modalWhatsAppMessage = isFlyer
+    ? `Hello ${modalSellerName}, I saw your promotional flyer "${inquireProduct?.title}" on UHASMART. I would like to find out more details!`
+    : `Hello ${modalSellerName}, I saw your listing "${inquireProduct?.title}" (GHS ${priceDisplay}) on UHASMART. Is it still available?`;
+
+  const modalWhatsAppUrl = inquireProduct ? createWhatsAppUrl(modalSellerPhone, modalWhatsAppMessage) : null;
+
+  // More items from this same seller
+  const moreSellerItems = useMemo(() => {
+    if (!inquireProduct) return [];
+    return listings
+      .filter((item) => item.seller_id === inquireProduct.seller_id && item.id !== inquireProduct.id)
+      .slice(0, 4);
+  }, [listings, inquireProduct]);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -181,7 +237,7 @@ function MarketplaceInner() {
             <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">Ho Marketplace</span>
             <h1 className="mt-1 text-2xl font-black text-gray-900 sm:text-3xl">Campus &amp; Town Marketplace</h1>
             <p className="mt-1 text-xs text-gray-500">
-              Hostels, salons, groceries, gadgets, thrift fashion &amp; services across all of Ho.
+              Hostels, salons, groceries, gadgets, thrift fashion, promotional flyers &amp; services in Ho.
             </p>
           </div>
 
@@ -193,7 +249,7 @@ function MarketplaceInner() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search hostels, barbers, groceries, gadgets..."
+                placeholder="Search hostels, barbers, groceries, gadgets, flyers..."
                 className="w-full rounded-2xl border border-gray-200/80 bg-white/70 py-2.5 pl-10 pr-4 text-xs font-medium text-gray-900 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
@@ -270,7 +326,7 @@ function MarketplaceInner() {
             ) : filteredProducts.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-12 text-center">
                 <Package className="mx-auto h-12 w-12 text-gray-300" />
-                <h3 className="mt-3 text-base font-bold text-gray-900">No active products found</h3>
+                <h3 className="mt-3 text-base font-bold text-gray-900">No active products or flyers found</h3>
                 <p className="mt-1 text-xs text-gray-500">
                   Try adjusting your search query or location filter, or be the first seller to list here!
                 </p>
@@ -283,6 +339,7 @@ function MarketplaceInner() {
                     product={product}
                     onInquire={(item) => {
                       setInquireProduct(item);
+                      setActiveGalleryIndex(0);
                       setShowInAppForm(false);
                       setSheetImgError(false);
                       setInquiryNotice("");
@@ -296,14 +353,14 @@ function MarketplaceInner() {
         </div>
       </main>
 
-      {/* Upgraded iOS Product Details Bottom Sheet / Modal */}
+      {/* Upgraded iOS Product Details & Gallery Bottom Sheet */}
       {inquireProduct && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
           onClick={() => setInquireProduct(null)}
         >
           <div
-            className="w-full max-w-lg rounded-t-[2.5rem] sm:rounded-3xl bg-white shadow-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
+            className="w-full max-w-lg rounded-t-[2.5rem] sm:rounded-3xl bg-white shadow-2xl max-h-[94vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             {/* iOS Pull Handle */}
@@ -313,7 +370,7 @@ function MarketplaceInner() {
 
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto px-5 pb-6 pt-2 space-y-4">
-              {/* Header with Close Button */}
+              {/* Header with Badges & Close Button */}
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -322,6 +379,11 @@ function MarketplaceInner() {
                   <span className="text-xs font-bold text-gray-700">
                     {modalCategoryObj?.name ?? inquireProduct.category}
                   </span>
+                  {isFlyer && (
+                    <span className="rounded-full bg-purple-100 text-purple-800 px-2 py-0.5 text-[10px] font-black uppercase">
+                      Flyer
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -333,14 +395,14 @@ function MarketplaceInner() {
                 </button>
               </div>
 
-              {/* Product Photo Showcase */}
+              {/* Main Showcase Image */}
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100 shadow-inner">
                 {modalImageUrl && !sheetImgError ? (
                   <img
                     src={modalImageUrl}
                     alt={inquireProduct.title}
                     onError={() => setSheetImgError(true)}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover transition-all duration-200"
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-gray-400">
@@ -351,20 +413,66 @@ function MarketplaceInner() {
                   </div>
                 )}
 
-                {/* Floating Price Tag on Image */}
+                {/* Floating Price Tag */}
                 <div className="absolute bottom-3 left-3">
                   <div className="glass-pill inline-flex items-baseline gap-1 rounded-2xl px-3 py-1.5 shadow-lg backdrop-blur-md">
                     <span className="text-xs font-bold text-blue-600">GHS</span>
-                    <span className="text-xl font-black text-gray-900 tracking-tight">
-                      {Number(inquireProduct.price_ghs).toFixed(2)}
+                    <span className="text-lg sm:text-xl font-black text-gray-900 tracking-tight">
+                      {priceDisplay}
                     </span>
                   </div>
                 </div>
+
+                {/* Photo Index Indicator */}
+                {galleryPhotos.length > 1 && (
+                  <div className="absolute top-3 right-3">
+                    <span className="glass-pill inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold text-gray-800 shadow-md backdrop-blur-md">
+                      <Images className="h-3 w-3 text-blue-600" />
+                      <span>
+                        {activeGalleryIndex + 1} / {galleryPhotos.length}
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {/* PRODUCT GALLERY THUMBNAIL STRIP (Requirement 4) */}
+              {galleryPhotos.length > 1 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-gray-600">
+                    <span>Product Gallery ({galleryPhotos.length} pictures)</span>
+                    <span className="text-[10px] text-blue-600 font-semibold">Tap to view photo</span>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none no-scrollbar">
+                    {galleryPhotos.map((photoPath, idx) => {
+                      const thumbUrl = getListingImageUrl(photoPath);
+                      const isSelected = activeGalleryIndex === idx;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveGalleryIndex(idx)}
+                          className={`relative h-14 w-14 shrink-0 rounded-xl overflow-hidden border-2 transition-all active:scale-95 ${
+                            isSelected
+                              ? "border-blue-600 ring-2 ring-blue-600/30 scale-105"
+                              : "border-gray-200 opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          {thumbUrl ? (
+                            <img src={thumbUrl} alt={`Thumbnail ${idx}`} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full bg-slate-200" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Title & Location */}
               <div>
-                <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 leading-snug">
+                <h2 className="text-lg sm:text-xl font-black text-gray-900 leading-snug">
                   {inquireProduct.title}
                 </h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
@@ -376,13 +484,19 @@ function MarketplaceInner() {
                     <ShieldCheck className="h-3.5 w-3.5" />
                     <span>Student Verified</span>
                   </span>
+                  {isFlyer && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-1 font-semibold text-purple-700">
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>Promotional Flyer</span>
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Description */}
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                 <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-                  Item Description
+                  {isFlyer ? "Flyer / Promotion Details" : "Product Description"}
                 </h4>
                 <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
                   {inquireProduct.description || "No additional description provided by the seller."}
@@ -407,17 +521,49 @@ function MarketplaceInner() {
                 </div>
               </div>
 
+              {/* MORE FROM THIS SELLER MINI GALLERY */}
+              {moreSellerItems.length > 0 && (
+                <div className="space-y-2 pt-1 border-t border-gray-100">
+                  <p className="text-xs font-bold text-gray-800">More from this Seller</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {moreSellerItems.map((item) => {
+                      const itemThumb = getListingImageUrl(item.image_path);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setInquireProduct(item);
+                            setActiveGalleryIndex(0);
+                          }}
+                          className="flex items-center gap-2 rounded-xl border border-gray-100 bg-slate-50 p-2 cursor-pointer hover:bg-white hover:border-blue-200 transition-all active:scale-95"
+                        >
+                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-200">
+                            {itemThumb && <img src={itemThumb} alt={item.title} className="h-full w-full object-cover" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-bold text-gray-900 truncate">{item.title}</p>
+                            <p className="text-[10px] font-extrabold text-blue-600">
+                              GHS {Number(item.price_ghs).toFixed(0)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Primary Direct WhatsApp CTA */}
               {modalWhatsAppUrl ? (
-                <div className="space-y-2">
+                <div className="space-y-2 pt-2">
                   <a
                     href={modalWhatsAppUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 active:scale-98 transition-all"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 active:scale-98 transition-all"
                   >
                     <Phone className="h-5 w-5" />
-                    <span>Chat Directly on WhatsApp</span>
+                    <span>{isFlyer ? "Inquire on WhatsApp Directly" : "Chat with Seller on WhatsApp"}</span>
                   </a>
                   <p className="text-center text-[11px] text-gray-400">
                     Instant contact for fastest delivery or inspection in Ho
