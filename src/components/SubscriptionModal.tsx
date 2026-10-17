@@ -25,6 +25,8 @@ interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  userEmail?: string | null;
+  sellerName?: string | null;
   defaultPhone?: string | null;
   subscriptionState: SubscriptionState;
   onSuccess: (newExpiry: string) => void;
@@ -34,6 +36,8 @@ export default function SubscriptionModal({
   isOpen,
   onClose,
   userId,
+  userEmail,
+  sellerName,
   defaultPhone,
   subscriptionState,
   onSuccess,
@@ -71,6 +75,8 @@ export default function SubscriptionModal({
       const result = await processMoMoSubscriptionPayment({
         supabase,
         userId,
+        userEmail,
+        sellerName,
         plan: selectedPlan,
         momoNetwork: selectedNetwork.id,
         momoNumber: cleanedNumber,
@@ -346,6 +352,17 @@ export default function SubscriptionModal({
                   <span className="text-gray-500">New Expiry:</span>
                   <span className="font-bold text-blue-600">{successDate}</span>
                 </div>
+              </div>
+
+              {/* Spam/Junk Email Alert Notice */}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-left text-xs leading-relaxed text-amber-900">
+                <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>Official Receipt Sent to Your Email</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Please check your inbox. If you don&apos;t see it, check your <strong>Spam</strong> or <strong>Junk</strong> folder and tap <strong>&ldquo;Report Not Spam&rdquo;</strong> so you never miss student orders!
+                </p>
               </div>
 
               <button

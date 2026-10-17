@@ -1416,6 +1416,8 @@ export default function SellerDashboard() {
         isOpen={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
         userId={user.id}
+        userEmail={user.email}
+        sellerName={profile?.business_name || profile?.display_name || "Seller"}
         defaultPhone={profile?.phone_number}
         subscriptionState={subscriptionState}
         onSuccess={() => {

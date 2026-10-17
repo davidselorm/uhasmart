@@ -141,19 +141,25 @@ export function getSubscriptionState(profile?: {
 export async function processMoMoSubscriptionPayment({
   supabase,
   userId,
+  userEmail,
+  sellerName,
   plan,
   momoNetwork,
   momoNumber,
 }: {
   supabase: SupabaseClient;
   userId: string;
+  userEmail?: string | null;
+  sellerName?: string | null;
   plan: SubscriptionPlan;
   momoNetwork: string;
   momoNumber: string;
-}): Promise<{ success: boolean; newExpiry?: string; message: string }> {
+}): Promise<{ success: boolean; newExpiry?: string; reference: string; message: string }> {
   const reference = `MOMO-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
   try {
+    let resolvedExpiry = "";
+
     // Attempt RPC activation first
     const { data: rpcData, error: rpcError } = await supabase.rpc("activate_seller_subscription", {
       p_plan_name: plan.name,
@@ -166,52 +172,78 @@ export async function processMoMoSubscriptionPayment({
     });
 
     if (!rpcError && rpcData?.success) {
-      return {
-        success: true,
-        newExpiry: rpcData.new_expiry,
-        message: `Payment of GHS ${plan.priceGhs} confirmed via ${momoNetwork.toUpperCase()} MoMo. Your subscription is active!`,
-      };
+      resolvedExpiry = rpcData.new_expiry || "";
+    } else {
+      // Direct fallback if RPC is not yet created in Supabase SQL editor
+      const newExpiryDate = new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
+      resolvedExpiry = newExpiryDate;
+
+      const [updRes, payRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .update({
+            subscription_status: "active",
+            subscription_tier: plan.name,
+            subscription_expires_at: newExpiryDate,
+            subscription_reminder_sent: false,
+          })
+          .eq("id", userId),
+        supabase
+          .from("subscription_payments")
+          .insert({
+            seller_id: userId,
+            amount_ghs: plan.priceGhs,
+            plan_name: plan.name,
+            duration_days: plan.durationDays,
+            payment_method: `momo_${momoNetwork}`,
+            momo_number: momoNumber,
+            momo_network: momoNetwork,
+            reference,
+            status: "success",
+          }),
+      ]);
+
+      if (updRes.error) {
+        console.warn("Direct profile update error:", updRes.error);
+      }
+      if (payRes.error) {
+        console.warn("Direct payment insert warning:", payRes.error);
+      }
     }
 
-    // Direct fallback if RPC is not yet created in Supabase SQL editor
-    const newExpiryDate = new Date(Date.now() + plan.durationDays * 24 * 60 * 60 * 1000).toISOString();
+    // Trigger async payment confirmation email if seller email is provided
+    if (userEmail && typeof window !== "undefined") {
+      const formattedExpiry = resolvedExpiry
+        ? new Date(resolvedExpiry).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+        : `${plan.durationDays} days`;
 
-    const [updRes, payRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .update({
-          subscription_status: "active",
-          subscription_tier: plan.name,
-          subscription_expires_at: newExpiryDate,
-          subscription_reminder_sent: false,
-        })
-        .eq("id", userId),
-      supabase
-        .from("subscription_payments")
-        .insert({
-          seller_id: userId,
-          amount_ghs: plan.priceGhs,
-          plan_name: plan.name,
-          duration_days: plan.durationDays,
-          payment_method: `momo_${momoNetwork}`,
-          momo_number: momoNumber,
-          momo_network: momoNetwork,
+      fetch("/api/email/subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "payment_confirmation",
+          email: userEmail,
+          sellerName: sellerName || "Seller",
+          planName: plan.name,
+          amountGhs: plan.priceGhs,
+          paymentMethod: `${momoNetwork.toUpperCase()} Mobile Money (${momoNumber})`,
           reference,
-          status: "success",
+          expiryDate: formattedExpiry,
         }),
-    ]);
-
-    if (updRes.error) {
-      console.warn("Direct profile update error:", updRes.error);
-    }
-    if (payRes.error) {
-      console.warn("Direct payment insert warning:", payRes.error);
+      }).catch((err) => {
+        console.warn("[Email Notification] Background confirmation dispatch notice:", err);
+      });
     }
 
     return {
       success: true,
-      newExpiry: newExpiryDate,
-      message: `Payment of GHS ${plan.priceGhs} confirmed! Your subscription is active for ${plan.durationDays} days.`,
+      newExpiry: resolvedExpiry,
+      reference,
+      message: `Payment of GHS ${plan.priceGhs} confirmed via ${momoNetwork.toUpperCase()} MoMo. Your subscription is active!`,
     };
   } catch (err) {
     console.error("Subscription payment error:", err);
