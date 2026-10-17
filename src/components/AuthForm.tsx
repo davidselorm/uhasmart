@@ -290,9 +290,20 @@ export default function AuthForm({ mode, defaultRole = "customer" }: AuthFormPro
         )}
 
         {message && (
-          <div className="flex items-center gap-2 rounded-xl bg-green-50 p-3 text-sm text-green-700" role="status">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>{message}</span>
+          <div className="space-y-2.5 rounded-2xl bg-green-50/90 p-4 border border-green-200 text-xs text-green-950" role="status">
+            <div className="flex items-center gap-2 font-bold text-green-800">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+              <span>Verification Email Sent!</span>
+            </div>
+            <p className="text-[11px] text-green-900 leading-relaxed">
+              {message}
+            </p>
+            <div className="rounded-xl bg-amber-50 p-3 border border-amber-200 text-[11px] text-amber-900 space-y-1">
+              <p className="font-bold text-amber-950">⚠️ Can&apos;t find the email in your inbox?</p>
+              <p className="leading-relaxed text-amber-800">
+                Please check your <strong>Spam</strong> or <strong>Junk</strong> folder. Mark it as <em>&quot;Not Spam&quot;</em> so you receive student buyer chats and listing approvals.
+              </p>
+            </div>
           </div>
         )}
 

@@ -51,6 +51,17 @@ export default function ForgotPasswordForm() {
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
           We have sent a secure password recovery link to <strong>{email}</strong>. Follow the link in the email to set a new password.
         </p>
+
+        {/* Spam / Junk Notice Box */}
+        <div className="mt-5 rounded-2xl bg-amber-50/90 p-4 border border-amber-200 text-left text-xs text-amber-900 space-y-1">
+          <p className="font-bold flex items-center gap-1.5 text-amber-950">
+            <span>⚠️ Can&apos;t find the email in your inbox?</span>
+          </p>
+          <p className="text-[11px] leading-relaxed text-amber-800">
+            Please check your <strong>Spam</strong> or <strong>Junk</strong> folder. Be sure to mark it as <em>&quot;Not Spam&quot;</em> so you receive future student buyer messages and security alerts.
+          </p>
+        </div>
+
         <Link
           href="/login"
           className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline"

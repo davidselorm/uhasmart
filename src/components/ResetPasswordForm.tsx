@@ -62,6 +62,15 @@ export default function ResetPasswordForm() {
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
           Your password has been changed successfully. Redirecting you to sign in...
         </p>
+
+        <div className="mt-4 rounded-2xl bg-blue-50/80 p-3.5 border border-blue-200 text-left text-xs text-blue-900">
+          <p className="font-bold flex items-center gap-1.5 text-blue-950 mb-0.5">
+            <span>🛡️ Security Notification</span>
+          </p>
+          <p className="text-[11px] leading-relaxed text-blue-800">
+            Your login credentials have been updated securely. If you did not perform this change, please report it immediately to UHASMART security.
+          </p>
+        </div>
         <Link
           href="/login"
           className="mt-6 inline-block rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
